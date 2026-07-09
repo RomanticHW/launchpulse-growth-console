@@ -130,4 +130,43 @@ RSpec.describe Experiments::LifecycleService do
     expect(new_experiment.section).to eq(section)
     expect(old_experiment.reload.winner_applied_at).to be_present
   end
+
+  it "rejects a second apply_winner! after the first succeeds" do
+    site, recommendation = recommendation_for(status: "open")
+    service = described_class.new
+    experiment = service.launch_from_recommendation!(site:, recommendation:, user: nil, account: site.account)
+    control = experiment.variants.find_by!(role: "control")
+    variant = experiment.variants.find_by!(role: "variant")
+    service.complete!(experiment:, user: nil, account: site.account)
+    service.apply_winner!(experiment:, variant: control, user: nil, account: site.account)
+
+    expect do
+      service.apply_winner!(experiment:, variant:, user: nil, account: site.account)
+    end.to raise_error(Experiments::LifecycleService::InvalidTransition, /已经应用/)
+  end
+
+  it "does not allow pause after complete" do
+    site, recommendation = recommendation_for(status: "open")
+    service = described_class.new
+    experiment = service.launch_from_recommendation!(site:, recommendation:, user: nil, account: site.account)
+    service.complete!(experiment:, user: nil, account: site.account)
+
+    expect do
+      service.pause!(experiment:, user: nil, account: site.account)
+    end.to raise_error(Experiments::LifecycleService::InvalidTransition)
+  end
+
+  it "locks the experiment row while applying a winner" do
+    site, recommendation = recommendation_for(status: "open")
+    service = described_class.new
+    experiment = service.launch_from_recommendation!(site:, recommendation:, user: nil, account: site.account)
+    variant = experiment.variants.find_by!(role: "variant")
+    service.complete!(experiment:, user: nil, account: site.account)
+
+    expect(experiment).to receive(:with_lock).and_call_original
+
+    service.apply_winner!(experiment:, variant:, user: nil, account: site.account)
+    expect(experiment.reload.winner_applied_at).to be_present
+  end
 end
+
