@@ -54,10 +54,16 @@ module Public
       return nil if section_uid.blank?
       raise HiddenSectionError, "Section is not visible" if require_visible && !section_uid_visible?(site, section_uid)
 
-      experiment = site.experiments.active.joins(:section).find_by(sections: { uid: section_uid })
+      experiment = site.experiments.accepting_new_assignments.joins(:section).find_by(sections: { uid: section_uid })
+      if experiment
+        return Experiments::AssignmentService.new(experiment).assign(visitor_id)
+      end
+
+      # Late conversion path: paused/completed unresolved experiments keep historical assignment only.
+      experiment = site.experiments.open_for_conversion.joins(:section).find_by(sections: { uid: section_uid })
       return nil unless experiment
 
-      Experiments::AssignmentService.new(experiment).assign(visitor_id)
+      experiment.assignments.find_by(visitor_id: visitor_id)
     end
 
     def section_uid_visible?(site, section_uid)

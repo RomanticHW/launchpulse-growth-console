@@ -26,6 +26,36 @@ RSpec.describe "Public forms and checkout" do
     expect(experiment.assignments.find_by(visitor_id: event.visitor_id)).to be_present
   end
 
+  it "attributes form submission to a paused experiment when the visitor was already assigned" do
+    site = create(:site, slug: "paused-form-demo", status: "published")
+    page = create(:page, site:)
+    section = create(:section, page:, kind: "contact_form")
+    experiment = create(:experiment, site:, section:, primary_goal: "form_submit")
+    variant = create(:variant, experiment:, key: "variant", name: "Variant")
+    form = site.forms.create!(section:, name: "Lead form")
+    form.form_fields.create!(label: "Email", key: "email", field_type: "email", required: true, position: 0)
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+
+    get "/s/paused-form-demo"
+    visitor = experiment.assignments.last.visitor_id
+    expect(visitor).to be_present
+
+    experiment.update!(status: "paused")
+
+    post "/s/paused-form-demo/forms/#{form.id}/submissions", params: {
+      form_submission: { email: "lead@example.test" }
+    }
+
+    expect(response).to redirect_to("/s/paused-form-demo?submitted=1")
+    event = site.events.where(event_type: "form_submit").last
+    expect(event.experiment).to eq(experiment)
+    expect(event.variant).to eq(variant)
+
+    perform_enqueued_jobs
+    expect(experiment.assignments.find_by!(visitor_id: visitor).conversions.where(conversion_type: "form_submit").count).to eq(1)
+  end
+
+
   it "rejects missing required dynamic fields" do
     site = create(:site, slug: "required-form-demo", status: "published")
     page = create(:page, site:)
