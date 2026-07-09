@@ -44,3 +44,7 @@ __MACOSX/
 
 /app/assets/builds/*
 !/app/assets/builds/.keep
+
+# Isolated git worktrees
+.worktrees/
+worktrees/
