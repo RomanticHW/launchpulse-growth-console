@@ -3,15 +3,16 @@ require "digest"
 module Sites
   class SnapshotService
     class ChecksumMismatch < StandardError; end
+    class UnresolvedExperiments < StandardError; end
 
     def initialize(site)
       @site = site
     end
 
     def publish!(user:, note: nil)
-      version = @site.published_snapshots.maximum(:version).to_i + 1
-      payload = payload_for(@site)
-      ActiveRecord::Base.transaction do
+      @site.with_lock do
+        version = @site.published_snapshots.maximum(:version).to_i + 1
+        payload = payload_for(@site)
         # 发布是草稿进入公开运行时的唯一入口；公开页面不会直接读取正在编辑的 sections。
         @site.update!(status: "published")
         @site.published_snapshots.create!(
@@ -27,6 +28,10 @@ module Sites
 
     def rollback!(snapshot, user:)
       verify_checksum!(snapshot)
+      if unresolved_experiments?
+        raise UnresolvedExperiments, "请先结束并应用实验胜出版本，再回滚发布。"
+      end
+
       ActiveRecord::Base.transaction do
         retained_paths = snapshot.payload.fetch("pages", []).map { |page_payload| page_payload.fetch("path") }
         @site.pages.where.not(path: retained_paths).destroy_all
@@ -98,6 +103,11 @@ module Sites
     end
 
     private
+
+    def unresolved_experiments?
+      @site.experiments.where(status: %w[active paused]).exists? ||
+        @site.experiments.where(status: "completed", winner_applied_at: nil).exists?
+    end
 
     def checksum_for(payload)
       # 快照校验保护的是内容，不应该依赖 Ruby 或 PostgreSQL 保留 Hash key 顺序。

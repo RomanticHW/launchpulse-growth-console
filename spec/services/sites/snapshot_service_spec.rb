@@ -14,6 +14,30 @@ RSpec.describe Sites::SnapshotService do
     expect(snapshot.published_at).to be_present
   end
 
+  it "allocates monotonically increasing versions for sequential publishes" do
+    site = create(:site, status: "draft")
+    create(:page, site:)
+    service = described_class.new(site)
+
+    v1 = service.publish!(user: nil, note: "Version 1")
+    v2 = service.publish!(user: nil, note: "Version 2")
+
+    expect(v2.version).to eq(v1.version + 1)
+  end
+
+  it "refuses rollback when the site has an unresolved experiment" do
+    site = create(:site, status: "published")
+    page = create(:page, site:)
+    section = create(:section, page:)
+    snapshot = described_class.new(site).publish!(user: nil, note: "Version 1")
+    create(:experiment, site:, section:, status: "active")
+
+    expect {
+      described_class.new(site).rollback!(snapshot, user: nil)
+    }.to raise_error(Sites::SnapshotService::UnresolvedExperiments)
+  end
+
+
   it "verifies a reloaded snapshot checksum" do
     site = create(:site, status: "draft")
     page = create(:page, site:)
