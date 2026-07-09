@@ -20,7 +20,8 @@ class Site < ApplicationRecord
 
   validates :name, :slug, :industry, :status, presence: true
   validates :status, inclusion: { in: STATUSES }
-  validates :slug, uniqueness: { scope: :account_id }, format: { with: /\A[a-z0-9-]+\z/ }
+  # Public routes resolve by slug alone (/s/:slug), so uniqueness must be global.
+  validates :slug, uniqueness: true, format: { with: /\A[a-z0-9-]+\z/ }
   validates :growth_score, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 100 }
 
   def home_page
