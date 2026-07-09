@@ -1,5 +1,8 @@
 class Membership < ApplicationRecord
-  ROLES = %w[owner marketer viewer].freeze
+  OWNER = "owner"
+  MARKETER = "marketer"
+  VIEWER = "viewer"
+  ROLES = [ OWNER, MARKETER, VIEWER ].freeze
 
   belongs_to :account
   belongs_to :user

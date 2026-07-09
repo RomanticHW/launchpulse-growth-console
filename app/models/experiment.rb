@@ -13,8 +13,8 @@ class Experiment < ApplicationRecord
   before_destroy :clear_winner_variant_reference
 
   scope :active, -> { where(status: "active") }
-  # New traffic / sticky assignment only while the experiment is running.
-  scope :accepting_new_assignments, -> { where(status: "active") }
+  # Semantic alias of active; kept separate so future rules can diverge without call-site churn.
+  scope :accepting_new_assignments, -> { active }
   # Late conversions still count until a winner is applied.
   scope :open_for_conversion, -> {
     where(status: %w[active paused completed], winner_applied_at: nil)

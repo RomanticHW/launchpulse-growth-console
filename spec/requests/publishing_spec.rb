@@ -110,7 +110,7 @@ RSpec.describe "Publishing" do
   it "redirects with an alert when rollback is blocked by an unresolved experiment" do
     account = create(:account)
     user = create(:user, password: "password")
-    create(:membership, account:, user:, role: "owner")
+    create(:membership, account:, user:, role: Membership::OWNER)
     site = create(:site, account:)
     page = create(:page, site:)
     section = create(:section, page:)
@@ -128,7 +128,7 @@ RSpec.describe "Publishing" do
   it "allows viewers to open the publish diff" do
     account = create(:account)
     user = create(:user, password: "password")
-    create(:membership, account:, user:, role: "viewer")
+    create(:membership, account:, user:, role: Membership::VIEWER)
     site = create(:site, account:)
     page = create(:page, site:)
     section = create(:section, page:, name: "Hero", props: { "headline" => "Published" })

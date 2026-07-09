@@ -2,6 +2,6 @@ FactoryBot.define do
   factory :membership do
     account
     user
-    role { "owner" }
+    role { Membership::OWNER }
   end
 end

@@ -14,7 +14,7 @@ RSpec.describe "Authorization" do
   end
 
   it "allows owners to publish" do
-    user, site = setup_site(role: "owner")
+    user, site = setup_site(role: Membership::OWNER)
     create(:page, site:)
     sign_in(user)
 
@@ -25,7 +25,7 @@ RSpec.describe "Authorization" do
   end
 
   it "blocks viewers from publishing" do
-    user, site = setup_site(role: "viewer")
+    user, site = setup_site(role: Membership::VIEWER)
     create(:page, site:)
     sign_in(user)
 
@@ -37,7 +37,7 @@ RSpec.describe "Authorization" do
   end
 
   it "blocks marketers from running traffic simulation" do
-    user, site = setup_site(role: "marketer")
+    user, site = setup_site(role: Membership::MARKETER)
     sign_in(user)
 
     post site_simulation_path(site)
@@ -47,7 +47,7 @@ RSpec.describe "Authorization" do
   end
 
   it "blocks marketers from rotating tracking tokens" do
-    user, site = setup_site(role: "marketer")
+    user, site = setup_site(role: Membership::MARKETER)
     sign_in(user)
 
     post site_rotate_tracking_token_path(site)
@@ -60,7 +60,7 @@ RSpec.describe "Authorization" do
     account_a = create(:account)
     account_b = create(:account)
     user_a = create(:user, password: "password")
-    create(:membership, account: account_a, user: user_a, role: "owner")
+    create(:membership, account: account_a, user: user_a, role: Membership::OWNER)
     site_b = create(:site, account: account_b)
     create(:page, site: site_b)
     sign_in(user_a)

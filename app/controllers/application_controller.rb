@@ -26,25 +26,28 @@ class ApplicationController < ActionController::Base
 
   def require_user
     if current_user.blank?
-      redirect_to new_session_path
+      redirect_to new_session_path and return
     elsif current_account.blank?
       reset_session
-      redirect_to new_session_path, alert: "请先加入一个账户。"
+      redirect_to new_session_path, alert: "请先加入一个账户。" and return
     end
   end
 
+  # Bang methods halt the filter chain when used as before_action (via performed?).
+  # Explicit return keeps them safe if ever called from an action body.
   def require_role!(*roles)
     allowed = roles.map(&:to_s)
     return if current_membership && allowed.include?(current_membership.role)
 
-    redirect_to root_path, alert: "没有权限执行这个操作。"
+    redirect_to root_path, alert: "没有权限执行这个操作。" and return
   end
 
   def require_editor!
-    require_role!("owner", "marketer")
+    require_role!(Membership::OWNER, Membership::MARKETER)
   end
 
   def require_owner!
-    require_role!("owner")
+    require_role!(Membership::OWNER)
   end
 end
+
