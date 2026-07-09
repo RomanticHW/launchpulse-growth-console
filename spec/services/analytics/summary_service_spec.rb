@@ -42,4 +42,16 @@ RSpec.describe Analytics::SummaryService do
     expect(summary.fetch(:top_sources)).to eq("direct" => 1)
     expect(summary.fetch(:top_devices)).to eq("desktop" => 1)
   end
+
+  it "normalizes the since window to the beginning of the day" do
+    site = create(:site)
+    midday = Time.zone.parse("#{Date.current} 12:00")
+    site.events.create!(event_type: "page_view", visitor_id: "early", source: "direct", device: "desktop", occurred_at: midday.beginning_of_day + 1.hour)
+    site.events.create!(event_type: "page_view", visitor_id: "late", source: "direct", device: "desktop", occurred_at: midday)
+
+    summary = described_class.new(site, since: midday).call
+
+    expect(summary.fetch(:page_views)).to eq(2)
+  end
 end
+
