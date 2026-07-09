@@ -81,6 +81,7 @@ LaunchPulse 想把这几件事接成一条闭环：
 - [演示指南](docs/demo-guide.md)
 - [技术问答](docs/technical-qa.md)
 - [提交说明](docs/submission-note.md)
+- [Events API 简表](docs/api-events.md)
 
 这些文档大致是按“产品问题 -> 设计取舍 -> 代码落点 -> 怎么验证”写的。不熟 Rails 也能先从产品链路看懂价值，想深挖再顺着文档里提到的服务对象和测试文件去翻代码。
 

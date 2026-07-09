@@ -43,6 +43,46 @@ DEMO_DEBUG=true bin/dev
 - CSP 当前为 **report-only**，避免 demo 部署被过严策略打断。
 - 访客/会话 cookie 在 production 带 `secure`。
 
+## 部署要点（Demo）
+
+本项目可用 Docker（根目录 `Dockerfile`）或传统 Rails 部署。**不是**一键多租户 SaaS 指南，只覆盖跑通所需环境变量与进程。
+
+### 环境变量
+
+| 变量 | 用途 |
+|------|------|
+| `RAILS_ENV=production` | 生产模式 |
+| `SECRET_KEY_BASE` | 会话与 message verifier（含 site_token） |
+| `DATABASE_URL` | 主库 PostgreSQL |
+| `APP_HOST` | Host 授权白名单（如 `demo.example.com`） |
+| `RAILS_LOG_LEVEL` | 可选，默认 `info` |
+
+多数据库（cache / queue / cable）按 `config/database.yml` 与 schema 文件准备；`bin/rails db:prepare` 可初始化结构。
+
+### 进程
+
+| 进程 | 职责 |
+|------|------|
+| Web（Puma） | 公开站 + 后台 + API |
+| Solid Queue worker | `AggregateEventJob`、流量模拟、看板尾部刷新等 |
+| （可选）同进程跑 queue | 小流量 demo 可用 `SOLID_QUEUE_IN_PUMA` 类配置，视版本与 `config` 而定 |
+
+实时看板依赖 **Solid Cable**；worker 与 web 须能连同一 cable 库，否则聚合完成但前端不刷新。
+
+### 健康检查
+
+- `GET /up`：进程存活（已从 SSL 强制跳转与 host 校验中排除）。
+- 不要对 `/up` 依赖业务库写路径做重逻辑。
+
+### 建议上线检查
+
+1. `SECRET_KEY_BASE` 与 seed/生产 token 不是开发机那份。
+2. `APP_HOST` 已设，且反代正确传 `X-Forwarded-Proto`。
+3. Queue worker 在跑，模拟访客与事件聚合能完成。
+4. 后台可登录，公开 `/s/:slug` 只读已发布快照。
+
+外部事件字段与错误码见 [docs/api-events.md](../docs/api-events.md)。
+
 ## 数据库
 
 项目使用 PostgreSQL，并使用 Rails 8 的多数据库配置：
