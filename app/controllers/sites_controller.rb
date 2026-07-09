@@ -1,5 +1,6 @@
 class SitesController < ApplicationController
   before_action :set_site
+  before_action :require_owner!, only: :rotate_tracking_token
 
   def show
     @summary = Analytics::SummaryService.new(@site).call

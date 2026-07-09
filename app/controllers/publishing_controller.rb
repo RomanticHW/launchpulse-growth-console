@@ -1,5 +1,6 @@
 class PublishingController < ApplicationController
   before_action :set_site
+  before_action :require_editor!
 
   def create
     snapshot = Sites::SnapshotService.new(@site).publish!(user: current_user, note: "手动发布")

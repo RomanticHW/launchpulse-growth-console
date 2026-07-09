@@ -56,6 +56,12 @@ DEMO_DEBUG=true bin/dev
 
 后台任务使用 Solid Queue，实时刷新使用 Solid Cable。这样本地 `bin/dev` 里即使网页进程和任务进程分开，后台任务发出的刷新消息也能被浏览器收到。
 
+## 检查脚本分工
+
+- `bin/ci`：本地/通用 CI 入口——RSpec + RuboCop + bundler-audit + importmap audit + Brakeman。
+- `bin/check-demo`：演示交付门禁——测试 + Zeitwerk + Tailwind 构建 + `package-demo` 打包校验。
+- GitHub Actions 的 test job 跑 `bin/check-demo`；安全/风格另有并行 job。
+
 ## 一键检查
 
 ```bash

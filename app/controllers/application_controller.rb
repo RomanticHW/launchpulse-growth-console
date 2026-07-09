@@ -6,7 +6,7 @@ class ApplicationController < ActionController::Base
   stale_when_importmap_changes
 
   before_action :require_user
-  helper_method :current_user, :current_account
+  helper_method :current_user, :current_account, :current_membership
 
   private
 
@@ -18,6 +18,12 @@ class ApplicationController < ActionController::Base
     @current_account ||= current_user&.accounts&.first
   end
 
+  def current_membership
+    return nil unless current_user && current_account
+
+    @current_membership ||= current_user.memberships.find_by(account: current_account)
+  end
+
   def require_user
     if current_user.blank?
       redirect_to new_session_path
@@ -25,5 +31,20 @@ class ApplicationController < ActionController::Base
       reset_session
       redirect_to new_session_path, alert: "请先加入一个账户。"
     end
+  end
+
+  def require_role!(*roles)
+    allowed = roles.map(&:to_s)
+    return if current_membership && allowed.include?(current_membership.role)
+
+    redirect_to root_path, alert: "没有权限执行这个操作。"
+  end
+
+  def require_editor!
+    require_role!("owner", "marketer")
+  end
+
+  def require_owner!
+    require_role!("owner")
   end
 end

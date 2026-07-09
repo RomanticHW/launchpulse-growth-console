@@ -1,6 +1,7 @@
 class SectionPatchesController < ApplicationController
   before_action :set_site
   before_action :set_patch
+  before_action :require_editor!, except: :preview
 
   def preview
     redirect_to site_with_selected_section(preview_recommendation_id: @patch.recommendation_id)

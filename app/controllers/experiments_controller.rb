@@ -1,5 +1,6 @@
 class ExperimentsController < ApplicationController
   before_action :set_site
+  before_action :require_editor!
 
   def create
     recommendation = @site.recommendations.find(params[:recommendation_id])

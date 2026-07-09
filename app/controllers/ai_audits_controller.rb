@@ -1,5 +1,6 @@
 class AiAuditsController < ApplicationController
   before_action :set_site
+  before_action :require_editor!
 
   def create
     audit = Ai::GrowthAuditService.new(@site).call

@@ -1,5 +1,6 @@
 class SimulationsController < ApplicationController
   before_action :set_site
+  before_action :require_owner!
 
   def create
     TrafficSimulatorJob.perform_later(@site.id, visitors: 1000)
