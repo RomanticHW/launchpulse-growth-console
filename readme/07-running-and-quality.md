@@ -36,6 +36,13 @@ DEMO_DEBUG=true bin/dev
 
 公开页右下角会显示访客短 ID 和当前实验版本。这个只是本地排查用，不是产品核心功能。
 
+## 生产环境注意
+
+- `config.force_ssl` / `assume_ssl` 已开启；健康检查 `/up` 不强制 HTTPS 跳转。
+- 设置 `APP_HOST`（如 `demo.example.com`）以启用 Host 授权。
+- CSP 当前为 **report-only**，避免 demo 部署被过严策略打断。
+- 访客/会话 cookie 在 production 带 `secure`。
+
 ## 数据库
 
 项目使用 PostgreSQL，并使用 Rails 8 的多数据库配置：

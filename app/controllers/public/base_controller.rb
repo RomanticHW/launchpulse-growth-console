@@ -15,7 +15,8 @@ module Public
         value: generated,
         expires: 1.year.from_now,
         httponly: true,
-        same_site: :lax
+        same_site: :lax,
+        secure: Rails.env.production?
       }
       generated
     end
@@ -29,7 +30,8 @@ module Public
         value: generated,
         expires: 1.year.from_now,
         httponly: true,
-        same_site: :lax
+        same_site: :lax,
+        secure: Rails.env.production?
       }
       generated
     end
