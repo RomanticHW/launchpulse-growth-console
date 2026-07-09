@@ -1,6 +1,6 @@
 class PublishingController < ApplicationController
   before_action :set_site
-  before_action :require_editor!
+  before_action :require_editor!, only: %i[create rollback]
 
   def create
     snapshot = Sites::SnapshotService.new(@site).publish!(user: current_user, note: "手动发布")
@@ -31,3 +31,4 @@ class PublishingController < ApplicationController
     @site = current_account.sites.find(params[:site_id])
   end
 end
+

@@ -502,5 +502,29 @@ RSpec.describe Analytics::AggregationService do
     expect(experiment.assignments.where(visitor_id: "visitor-new")).to be_empty
     expect(experiment.conversions).to be_empty
   end
+
+  it "does not attribute explicitly stamped conversions after the winner is applied" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    experiment = create(:experiment, site:, section:, status: "completed", winner_applied_at: Time.current, primary_goal: "form_submit")
+    variant = create(:variant, experiment:)
+    assignment = experiment.assignments.create!(visitor_id: "visitor-1", variant:)
+    event = site.events.create!(
+      event_type: "form_submit",
+      visitor_id: "visitor-1",
+      source: "direct",
+      device: "desktop",
+      experiment:,
+      variant:,
+      variant_key: variant.key,
+      occurred_at: Time.current
+    )
+
+    described_class.new(event).call
+
+    expect(assignment.conversions.count).to eq(0)
+  end
 end
+
 

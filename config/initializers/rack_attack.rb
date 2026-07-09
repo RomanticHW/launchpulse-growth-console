@@ -18,6 +18,15 @@ class Rack::Attack
     req.ip if req.path == "/api/v1/events" && req.post?
   end
 
+  # Also key by token when present so one key cannot share another client's IP budget forever.
+  throttle("api_events/token", limit: 300, period: 1.minute) do |req|
+    next unless req.path == "/api/v1/events" && req.post?
+
+    token = req.params["site_token"].presence || req.get_header("HTTP_X_SITE_TOKEN")
+    token.presence
+  end
+
+
   throttle("public_forms/ip", limit: 30, period: 1.minute) do |req|
     req.ip if req.path.match?(%r{\A/s/[^/]+/forms/}) && req.post?
   end

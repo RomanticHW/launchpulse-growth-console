@@ -68,7 +68,14 @@ module Analytics
     def explicit_assignment_for_event
       return nil unless @event.experiment_id && @event.variant
 
-      assignment = assignment_for(@event.experiment)
+      experiment = @event.experiment
+      return [] unless experiment
+      # Explicit stamps still honor the conversion window: once a winner is applied,
+      # do not keep writing new conversion rows from late/replayed events.
+      return [] unless experiment.winner_applied_at.nil?
+      return [] unless %w[active paused completed].include?(experiment.status)
+
+      assignment = assignment_for(experiment)
       return [] unless assignment
 
       [ assignment ]
