@@ -1,0 +1,45 @@
+<section id="contact" class="px-6 py-14 text-[var(--site-ink)] sm:px-8" style="background: color-mix(in srgb, var(--site-surface) 74%, var(--site-base));">
+  <div class="mx-auto grid w-full max-w-6xl gap-8 lg:grid-cols-2">
+  <div>
+    <h2 class="font-site-display text-3xl font-semibold tracking-tight"><%= props["headline"] || "留下你的需求" %></h2>
+    <p class="mt-3 max-w-md text-sm leading-6 opacity-75"><%= props["helper"] || "告诉我们你想了解什么，我们会尽快回复。" %></p>
+  </div>
+  <% if local_assigns[:public_site] && local_assigns[:form] %>
+    <%= form_with url: public_site_form_submissions_path(public_site.slug, form_id: form.id),
+      scope: :form_submission,
+      class: "space-y-3 rounded-[var(--radius-panel)] border p-5",
+      style: "border-color: color-mix(in srgb, var(--site-accent) 24%, transparent); background: var(--site-surface);",
+      data: {
+        controller: "public-tracking",
+        public_tracking_url_value: public_site_events_path(public_site.slug),
+        public_tracking_event_type_value: "form_start",
+        public_tracking_section_uid_value: section.uid,
+        public_tracking_form_id_value: form.id,
+        action: "focusin->public-tracking#send"
+      } do |builder| %>
+      <% form.form_fields.each do |field| %>
+        <% key = field.param_key %>
+        <div>
+          <%= builder.label key, field.label, class: "block text-sm font-medium" %>
+          <% if field.field_type == "textarea" %>
+            <%= builder.text_area key, required: field.required?, rows: 3, class: "mt-2 w-full rounded-[var(--radius-control)] border bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-4", style: "border-color: color-mix(in srgb, var(--site-accent) 30%, transparent); --tw-ring-color: color-mix(in srgb, var(--site-accent) 16%, transparent);" %>
+          <% elsif field.field_type == "email" %>
+            <%= builder.email_field key, required: field.required?, class: "mt-2 w-full rounded-[var(--radius-control)] border bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-4", style: "border-color: color-mix(in srgb, var(--site-accent) 30%, transparent); --tw-ring-color: color-mix(in srgb, var(--site-accent) 16%, transparent);" %>
+          <% elsif field.field_type == "select" %>
+            <%= builder.select key, Array(field.metadata["options"]), { include_blank: !field.required? }, required: field.required?, class: "mt-2 w-full rounded-[var(--radius-control)] border bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-4", style: "border-color: color-mix(in srgb, var(--site-accent) 30%, transparent); --tw-ring-color: color-mix(in srgb, var(--site-accent) 16%, transparent);" %>
+          <% else %>
+            <%= builder.text_field key, required: field.required?, class: "mt-2 w-full rounded-[var(--radius-control)] border bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-4", style: "border-color: color-mix(in srgb, var(--site-accent) 30%, transparent); --tw-ring-color: color-mix(in srgb, var(--site-accent) 16%, transparent);" %>
+          <% end %>
+        </div>
+      <% end %>
+      <%= builder.submit props["submit_label"] || "提交", class: "w-full rounded-[var(--radius-control)] px-4 py-2.5 text-sm font-semibold transition active:translate-y-px", style: "background: var(--site-accent); color: var(--site-on-accent);" %>
+    <% end %>
+  <% else %>
+    <form class="space-y-3 rounded-[var(--radius-panel)] border p-5" style="border-color: color-mix(in srgb, var(--site-accent) 24%, transparent); background: var(--site-surface);">
+      <label class="block text-sm font-medium">邮箱</label>
+      <input class="w-full rounded-[var(--radius-control)] border bg-transparent px-3 py-2 text-sm" style="border-color: color-mix(in srgb, var(--site-accent) 30%, transparent);" value="customer@example.com">
+      <button class="w-full rounded-[var(--radius-control)] px-4 py-2.5 text-sm font-semibold" style="background: var(--site-accent); color: var(--site-on-accent);"><%= props["submit_label"] || "提交" %></button>
+    </form>
+  <% end %>
+  </div>
+</section>

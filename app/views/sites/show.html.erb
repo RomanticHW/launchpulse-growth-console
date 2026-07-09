@@ -1,0 +1,411 @@
+<%= turbo_stream_from "site_#{@site.id}_events" %>
+<%= turbo_stream_from "site_#{@site.id}_metrics" %>
+<% selected_section_id = params[:selected_section_id].presence || @preview_patch&.section_id %>
+
+<div
+  class="space-y-5"
+  data-controller="inspector drawer"
+  data-action="keydown.esc@window->drawer#close keydown.esc@window->inspector#clear"
+  data-inspector-section-id-value="<%= selected_section_id %>"
+  data-inspector-preview-section-id-value="<%= @preview_patch&.section_id %>"
+  data-inspector-default-title-value="检查器总览"
+  data-inspector-default-meta-value="全站指标、建议、实验和最近事件"
+>
+  <header class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+    <div>
+      <div class="text-sm text-slate-500"><%= @site.industry %></div>
+      <h1 class="font-display text-3xl font-semibold tracking-tight text-console-950"><%= @site.name %></h1>
+    </div>
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div class="flex flex-wrap gap-2">
+        <%= button_to "生成诊断", site_ai_audits_path(@site), method: :post, data: { turbo_submits_with: "正在生成诊断..." }, class: "rounded-[var(--radius-control)] bg-signal-amber px-4 py-2 text-sm font-semibold text-console-950 transition hover:bg-signal-amber-dim active:translate-y-px" %>
+        <%= button_to "发布", site_publishing_path(@site), method: :post, data: { turbo_submits_with: "正在发布..." }, class: "rounded-[var(--radius-control)] bg-console-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-console-900 active:translate-y-px" %>
+      </div>
+      <div class="flex flex-wrap items-start gap-2 rounded-[var(--radius-control)] border border-paper-line bg-white p-1">
+        <%= link_to "公开预览", public_site_path(@site.slug), target: "_blank", rel: "noopener", class: "rounded-[var(--radius-control)] px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-paper" %>
+        <details class="group relative">
+          <summary class="cursor-pointer list-none rounded-[var(--radius-control)] px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-paper [&::-webkit-details-marker]:hidden">演示工具</summary>
+          <div class="mt-2 flex min-w-52 flex-col gap-2 rounded-[var(--radius-control)] border border-paper-line bg-white p-2 shadow-lg sm:absolute sm:right-0 sm:z-20 sm:w-56">
+            <%= button_to "生成追踪 token", site_rotate_tracking_token_path(@site), method: :post, data: { turbo_submits_with: "正在生成..." }, class: "w-full rounded-[var(--radius-control)] px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-paper" %>
+            <%= button_to "模拟 1000 位访客", site_simulation_path(@site), method: :post, data: { turbo_submits_with: "正在排队模拟..." }, class: "w-full rounded-[var(--radius-control)] border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100" %>
+          </div>
+        </details>
+      </div>
+    </div>
+  </header>
+
+  <% if notice.present? %>
+    <div class="rounded-[var(--radius-control)] border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800"><%= notice %></div>
+  <% end %>
+  <% if alert.present? %>
+    <div class="rounded-[var(--radius-control)] border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800"><%= alert %></div>
+  <% end %>
+  <% if flash[:tracking_token].present? %>
+    <section class="rounded-[var(--radius-panel)] border border-signal-violet/25 bg-signal-violet/10 p-4 text-sm text-console-950">
+      <div class="font-semibold">演示追踪 token</div>
+      <p class="mt-1">仅本次显示。之前的演示 token 已停用。</p>
+      <textarea readonly class="mt-3 h-24 w-full rounded-[var(--radius-control)] border border-signal-violet/25 bg-white p-2 font-mono text-xs text-slate-700"><%= flash[:tracking_token] %></textarea>
+    </section>
+  <% end %>
+
+  <% active_experiments_count = @experiments.count { |experiment| experiment.status == "active" } %>
+  <% latest_snapshot = @snapshots.first %>
+  <% funnel_total = @summary[:funnel].values.sum.to_i %>
+  <section class="console-status-band overflow-hidden rounded-[var(--radius-panel)] border border-console-line bg-console-950 p-4 text-white console-panel-shadow">
+    <div class="relative z-10 grid gap-3 lg:grid-cols-[1.25fr_repeat(3,minmax(0,0.72fr))]">
+      <div class="flex min-h-36 flex-col justify-between rounded-[var(--radius-control)] border border-white/10 bg-white/[0.045] p-5">
+        <div>
+          <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-signal-amber-tint">LaunchPulse Workspace</div>
+          <h2 class="mt-3 font-display text-2xl font-semibold tracking-tight">预览驱动的增长工作台</h2>
+          <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-300">把页面预览、诊断建议和实验结果收敛到同一个操作面，减少来回定位和信息噪音。</p>
+        </div>
+        <div class="mt-5 flex flex-wrap gap-2 text-xs">
+          <span class="rounded-[var(--radius-pill)] border border-white/10 bg-white/10 px-2.5 py-1 text-slate-200"><%= @site.home_page.sections.size %> 个区块</span>
+          <span class="rounded-[var(--radius-pill)] border border-white/10 bg-white/10 px-2.5 py-1 text-slate-200"><%= @recommendations.size %> 条建议</span>
+          <span class="rounded-[var(--radius-pill)] border border-white/10 bg-white/10 px-2.5 py-1 text-slate-200"><%= active_experiments_count %> 个运行实验</span>
+        </div>
+      </div>
+
+      <div class="console-status-tile rounded-[var(--radius-control)] border border-white/10 bg-white/[0.055] p-4">
+        <div class="text-xs text-slate-400">增长分数</div>
+        <div class="mt-4 flex items-end gap-2">
+          <div class="font-mono text-4xl font-semibold leading-none text-white" data-controller="count-up" data-count-up-key-value="site-<%= @site.id %>-growth-score" data-count-up-end-value="<%= @site.growth_score %>"><%= @site.growth_score %></div>
+          <div class="pb-1 text-xs text-slate-400">/ 100</div>
+        </div>
+        <div class="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div class="h-full rounded-full bg-signal-amber" style="width: <%= @site.growth_score.to_i.clamp(0, 100) %>%"></div>
+        </div>
+      </div>
+
+      <div class="console-status-tile rounded-[var(--radius-control)] border border-white/10 bg-white/[0.055] p-4">
+        <div class="text-xs text-slate-400">实时回流</div>
+        <div class="mt-4 font-mono text-4xl font-semibold leading-none text-white" data-controller="count-up" data-count-up-key-value="site-<%= @site.id %>-status-page-views" data-count-up-end-value="<%= @summary[:page_views] %>"><%= number_with_delimiter(@summary[:page_views]) %></div>
+        <div class="mt-5 flex items-center justify-between gap-2 text-xs text-slate-400">
+          <span>漏斗事件</span>
+          <span class="font-mono text-slate-200"><%= number_with_delimiter(funnel_total) %></span>
+        </div>
+      </div>
+
+      <div class="console-status-tile rounded-[var(--radius-control)] border border-white/10 bg-white/[0.055] p-4">
+        <div class="text-xs text-slate-400">发布版本</div>
+        <div class="mt-4 font-mono text-4xl font-semibold leading-none text-white"><%= latest_snapshot ? "v#{latest_snapshot.version}" : "草稿" %></div>
+        <div class="mt-5 text-xs leading-5 text-slate-400">
+          <% if latest_snapshot %>
+            <%= l(latest_snapshot.created_at, format: :short) %>
+          <% else %>
+            尚未生成发布快照
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flex items-center justify-between gap-3 rounded-[var(--radius-panel)] border border-paper-line bg-white/80 p-3 console-panel-shadow">
+    <button
+      type="button"
+      class="inline-flex items-center gap-2 rounded-[var(--radius-control)] border border-paper-line bg-white px-3 py-2 text-sm font-semibold text-console-950 transition hover:bg-paper"
+      data-drawer-target="trigger"
+      data-action="drawer#open"
+      aria-controls="site_structure_drawer"
+      aria-expanded="false"
+    >
+      <span>页面结构与快照</span>
+      <span class="rounded-[var(--radius-pill)] bg-paper px-2 py-0.5 font-mono text-[11px] font-medium text-slate-500"><%= @site.home_page.sections.size %> 个区块</span>
+    </button>
+    <div class="hidden text-xs text-slate-500 sm:block"><%= latest_snapshot ? "最新 v#{latest_snapshot.version}" : "草稿未发布" %></div>
+  </div>
+
+  <div
+    class="fixed inset-0 z-40 bg-console-950/35 opacity-0 backdrop-blur-sm transition-opacity duration-150"
+    data-drawer-target="backdrop"
+    data-action="drawer#close"
+    hidden
+  ></div>
+
+  <aside
+    id="site_structure_drawer"
+    class="fixed inset-y-0 left-0 z-50 w-[min(430px,calc(100vw-2rem))] -translate-x-full overflow-y-auto border-r border-paper-line bg-paper p-5 opacity-0 shadow-2xl transition duration-200 ease-[var(--ease-signature)]"
+    data-drawer-target="panel"
+    data-action="keydown->drawer#trapFocus"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    aria-label="页面结构与版本快照"
+    hidden
+  >
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Structure</div>
+        <h2 class="mt-1 font-display text-xl font-semibold tracking-tight text-console-950">页面结构与快照</h2>
+      </div>
+      <button type="button" class="rounded-[var(--radius-control)] border border-paper-line bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-paper" data-action="drawer#close">关闭</button>
+    </div>
+
+    <section class="mt-5 rounded-[var(--radius-control)] border border-paper-line bg-white p-4">
+      <h3 class="font-display text-sm font-semibold text-console-950">页面区块</h3>
+      <div class="relative mt-4 space-y-2 before:absolute before:left-[7px] before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-paper-line">
+        <% @site.home_page.sections.each do |section| %>
+          <button
+            type="button"
+            aria-label="聚焦<%= section.name %>"
+            class="relative grid w-full grid-cols-[16px_1fr_auto] items-start gap-3 rounded-[var(--radius-control)] border border-transparent px-1 py-2 text-left transition hover:border-paper-line hover:bg-paper/60 data-[selected=true]:border-signal-violet/30 data-[selected=true]:bg-signal-violet/10"
+            data-inspector-target="sectionNav"
+            data-section-id="<%= section.id %>"
+            data-section-name="<%= section.name %>"
+            data-section-kind="<%= section_kind_label(section.kind) %>"
+            data-action="inspector#select drawer#close"
+          >
+            <span class="relative mt-1 h-3.5 w-3.5 rounded-full ring-4 ring-white <%= section_kind_color(section.kind) %>"></span>
+            <div>
+              <div class="text-sm font-medium text-console-950"><%= section.name %></div>
+              <div class="font-mono text-xs text-slate-500"><%= section_kind_label(section.kind) %></div>
+            </div>
+            <span class="rounded-[var(--radius-pill)] bg-white px-2 py-1 text-[11px] font-semibold text-slate-500">聚焦</span>
+          </button>
+        <% end %>
+      </div>
+    </section>
+
+    <section class="mt-4 rounded-[var(--radius-control)] border border-paper-line bg-white p-4">
+      <h3 class="font-display text-sm font-semibold text-console-950">发布快照</h3>
+      <div class="mt-3 space-y-2">
+        <% @snapshots.each do |snapshot| %>
+          <div class="rounded-[var(--radius-control)] bg-paper p-2 text-xs text-slate-600">
+            <div class="font-mono font-semibold text-console-950">v<%= snapshot.version %></div>
+            <div><%= l(snapshot.created_at, format: :short) %></div>
+            <div class="mt-2 flex gap-2">
+              <%= link_to "对比", diff_site_publishing_path(@site, snapshot_id: snapshot.id), class: "text-slate-700 underline" %>
+              <%= button_to "回滚", rollback_site_publishing_path(@site, snapshot_id: snapshot.id), method: :post, data: { turbo_submits_with: "正在回滚..." }, class: "text-slate-700 underline" %>
+            </div>
+          </div>
+        <% end %>
+        <% if @snapshots.empty? %>
+          <div class="rounded-[var(--radius-control)] bg-paper p-3 text-sm text-slate-500">发布后会记录可回滚的快照。</div>
+        <% end %>
+      </div>
+    </section>
+  </aside>
+
+  <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+
+    <section class="min-w-0 rounded-[var(--radius-panel)] border border-paper-line bg-white p-4 console-panel-shadow" data-controller="preview" data-preview-default-mode-value="auto" data-preview-mobile-breakpoint-value="640">
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 class="font-display text-sm font-semibold text-console-950">实时预览</h2>
+          <div class="mt-1 font-mono text-[11px] text-slate-400"><%= @site.slug %></div>
+        </div>
+        <div class="device-switch relative inline-grid grid-cols-2 rounded-[var(--radius-control)] border border-paper-line bg-paper p-1">
+          <span class="device-switch__thumb absolute left-1 top-1 h-[calc(100%-0.5rem)] w-[calc(50%-0.25rem)] rounded-[var(--radius-control)] bg-console-950 shadow-sm"></span>
+          <button class="relative rounded-[var(--radius-control)] px-3 py-1 text-sm text-slate-600 transition data-[active=true]:text-white" data-preview-target="desktopButton" data-action="preview#desktop" data-active="true" aria-pressed="true">桌面</button>
+          <button class="relative rounded-[var(--radius-control)] px-3 py-1 text-sm text-slate-600 transition data-[active=true]:text-white" data-preview-target="mobileButton" data-action="preview#mobile" data-active="false" aria-pressed="false">手机</button>
+        </div>
+      </div>
+      <div class="console-canvas overflow-hidden rounded-[var(--radius-panel)] border border-console-line bg-console-950 p-4">
+        <div class="site-preview-viewport" data-preview-target="viewport">
+          <div class="site-preview-sizer mx-auto overflow-hidden" data-preview-target="sizer">
+            <div class="site-preview-frame max-w-none overflow-hidden rounded-[var(--radius-panel)] border border-console-line bg-white shadow-2xl transition-all" data-preview-target="frame" style="<%= site_theme_style(@site) %>">
+              <div class="flex items-center gap-2 border-b border-paper-line bg-paper px-4 py-2">
+                <span class="h-2.5 w-2.5 rounded-full bg-[#ef6b5a]"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-signal-amber"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                <span class="ml-3 truncate rounded-[var(--radius-pill)] bg-white px-3 py-1 font-mono text-[11px] text-slate-500">/s/<%= @site.slug %></span>
+              </div>
+              <% @site.home_page.sections.each do |section| %>
+                <% preview_props = @preview_patch&.section_id == section.id ? @preview_patch.after_props.presence || section.props.deep_merge(@preview_patch.props_diff) : section.props %>
+                <% section_has_recommendation = @recommendations.any? { |recommendation| recommendation.section_id == section.id && !%w[dismissed superseded].include?(recommendation.status) } %>
+                <% section_has_active_experiment = @experiments.any? { |experiment| experiment.section_id == section.id && %w[active paused].include?(experiment.status) && experiment.winner_applied_at.blank? } %>
+                <% section_has_winner = @experiments.any? { |experiment| experiment.section_id == section.id && experiment.winner_applied_at.present? } %>
+                <div
+                  data-inspector-target="section"
+                  data-section-id="<%= section.id %>"
+                  data-section-name="<%= section.name %>"
+                  data-section-kind="<%= section_kind_label(section.kind) %>"
+                  data-action="click->inspector#selectSection"
+                  role="group"
+                  aria-label="<%= section.name %> 区块预览"
+                  class="relative cursor-pointer outline outline-2 -outline-offset-2 outline-transparent transition duration-200 hover:outline-signal-violet/50 focus-visible:outline-signal-violet data-[selected=true]:z-10 data-[selected=true]:outline-signal-violet data-[selected=true]:ring-4 data-[selected=true]:ring-signal-violet/15 data-[spotlight=dimmed]:scale-[0.995] data-[spotlight=dimmed]:opacity-45 data-[spotlight=dimmed]:saturate-75"
+                >
+                  <button
+                    type="button"
+                    aria-label="聚焦 <%= section.name %> 区块"
+                    class="sr-only rounded-[var(--radius-pill)] border border-signal-violet/20 bg-white/95 px-2 py-1 text-[11px] font-semibold text-signal-violet-dim shadow-sm focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-30"
+                    data-action="inspector#select"
+                    data-section-id="<%= section.id %>"
+                  >聚焦 <%= section.name %></button>
+                  <% if section_has_recommendation || section_has_active_experiment || section_has_winner %>
+                    <div class="pointer-events-none absolute left-3 top-3 z-20 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-1.5">
+                      <% if section_has_recommendation %>
+                        <span data-hotspot-section-id="<%= section.id %>" class="hotspot-badge inline-flex items-center gap-1 rounded-[var(--radius-pill)] border border-signal-violet/20 bg-white/90 px-2 py-1 text-[11px] font-semibold text-signal-violet-dim shadow-sm backdrop-blur">建议</span>
+                      <% end %>
+                      <% if section_has_active_experiment %>
+                        <span data-hotspot-section-id="<%= section.id %>" class="hotspot-badge inline-flex items-center gap-1 rounded-[var(--radius-pill)] border border-signal-amber/25 bg-white/90 px-2 py-1 text-[11px] font-semibold text-signal-amber-dim shadow-sm backdrop-blur">实验中</span>
+                      <% end %>
+                      <% if section_has_winner %>
+                        <span data-hotspot-section-id="<%= section.id %>" class="inline-flex items-center rounded-[var(--radius-pill)] border border-emerald-200 bg-white/90 px-2 py-1 text-[11px] font-semibold text-emerald-700 shadow-sm backdrop-blur">已胜出</span>
+                      <% end %>
+                    </div>
+                  <% end %>
+                  <%= render Sections::Renderer.new(section).partial_path, section: section, props: preview_props %>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside data-inspector-target="sidebar" class="relative space-y-5 xl:sticky xl:top-5 xl:max-h-[calc(100dvh-2.5rem)] xl:overflow-y-auto xl:pr-1">
+      <section class="rounded-[var(--radius-panel)] border border-paper-line bg-white p-4 console-panel-shadow">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-signal-violet-dim">区块检查器</div>
+            <h2 class="mt-1 truncate font-display text-xl font-semibold tracking-tight text-console-950" data-inspector-target="selectedName">检查器总览</h2>
+            <p class="mt-1 text-xs leading-5 text-slate-500" data-inspector-target="selectedMeta">全站指标、建议、实验和最近事件</p>
+          </div>
+          <button
+            type="button"
+            class="hidden shrink-0 rounded-[var(--radius-control)] border border-paper-line bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-paper"
+            data-inspector-target="clearButton"
+            data-action="inspector#clear"
+          >清除</button>
+        </div>
+      </section>
+
+      <div data-inspector-target="overview" class="space-y-5">
+        <%= render "analytics_summary", site: @site, summary: @summary %>
+      </div>
+
+      <section class="rounded-[var(--radius-panel)] border border-paper-line bg-white p-4 console-panel-shadow">
+        <h2 class="font-display text-sm font-semibold text-console-950">诊断建议</h2>
+        <div data-inspector-target="recommendationEmpty" class="mt-4 hidden rounded-[var(--radius-control)] bg-paper p-3 text-sm text-slate-500">当前区块暂无建议。</div>
+
+        <div class="mt-4 space-y-3">
+          <% @recommendations.each do |recommendation| %>
+            <% confidence_percent = (recommendation.confidence.to_f * 100).to_i.clamp(0, 100) %>
+            <% linked_experiment = recommendation.experiments.find { |experiment| %w[active paused completed].include?(experiment.status) && experiment.winner_applied_at.blank? } %>
+            <% winner_applied_experiment = recommendation.experiments.find { |experiment| experiment.winner_applied_at.present? } %>
+            <% section_unresolved_experiment = @experiments.find { |experiment| experiment.section_id == recommendation.section_id && (%w[active paused].include?(experiment.status) || (experiment.status == "completed" && experiment.winner_applied_at.blank?)) } %>
+            <div class="overflow-hidden rounded-[var(--radius-control)] border border-paper-line border-l-4 border-l-signal-violet/50 bg-white p-3 shadow-[0_10px_28px_rgb(11_18_32_/_0.06)]" data-inspector-target="recommendation" data-section-id="<%= recommendation.section_id %>">
+              <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <div class="text-sm font-semibold text-console-950"><%= recommendation.title %></div>
+                    <% if recommendation.section %>
+                      <div class="mt-1 inline-flex max-w-full rounded-[var(--radius-pill)] bg-paper px-2 py-1 font-mono text-[11px] text-slate-500">
+                        <span class="truncate"><%= recommendation.section.name %> / <%= section_kind_label(recommendation.section.kind) %></span>
+                      </div>
+                    <% end %>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-1.5">
+                    <% if recommendation.section %>
+                      <button type="button" class="rounded-[var(--radius-pill)] border border-paper-line bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-paper" data-action="inspector#selectCard" data-section-id="<%= recommendation.section_id %>">定位</button>
+                    <% end %>
+                    <span class="rounded-[var(--radius-pill)] bg-signal-violet/10 px-2 py-1 text-[11px] font-semibold text-signal-violet-dim"><%= status_label(recommendation.status) %></span>
+                  </div>
+                </div>
+              <p class="mt-1 text-xs leading-5 text-slate-500"><%= recommendation.problem %></p>
+              <div class="mt-3">
+                <div class="flex justify-between gap-2 text-xs font-medium text-slate-600">
+                  <span><%= recommendation.expected_impact %></span>
+                  <span class="font-mono">可信度 <%= confidence_percent %>%</span>
+                </div>
+                <div
+                  class="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100"
+                  role="progressbar"
+                  aria-valuenow="<%= confidence_percent %>"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuetext="<%= confidence_percent %>%"
+                  aria-label="诊断建议可信度"
+                >
+                  <div class="h-full rounded-full bg-signal-violet progress-bar-fill" style="width: <%= confidence_percent %>%"></div>
+                </div>
+              </div>
+              <% if recommendation.section_patch %>
+                <% patch = recommendation.section_patch %>
+                <% before_props = patch.before_props.presence || recommendation.section&.props || {} %>
+                <% after_props = patch.after_props.presence || before_props.deep_merge(recommendation.suggested_patch) %>
+                <% changed_keys = (before_props.keys | after_props.keys).select { |key| before_props[key] != after_props[key] } %>
+                <div class="mt-3 rounded-[var(--radius-control)] border border-paper-line bg-paper/50 p-2 text-xs">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="font-semibold text-console-950">变更字段</div>
+                    <span class="font-mono text-[11px] text-slate-400"><%= changed_keys.size %> 项</span>
+                  </div>
+                  <div class="mt-2 space-y-1">
+                    <% changed_keys.first(4).each do |key| %>
+                      <div class="grid grid-cols-[76px_minmax(0,1fr)] gap-2 rounded-[var(--radius-control)] bg-white px-2 py-1">
+                        <span class="font-medium text-slate-500"><%= key %></span>
+                        <span class="flex min-w-0 flex-wrap items-center gap-1.5 text-slate-500">
+                          <span class="inline-flex min-w-0 max-w-full items-center gap-1 rounded-[var(--radius-control)] border border-signal-amber/25 bg-signal-amber/10 px-1.5 py-0.5 text-signal-amber-dim" data-change-before>
+                            <span class="shrink-0 font-mono text-[10px] font-semibold">原</span>
+                            <span class="truncate"><%= before_props[key].to_s.presence || "空" %></span>
+                          </span>
+                          <span aria-hidden="true">→</span>
+                          <span class="inline-flex min-w-0 max-w-full items-center gap-1 rounded-[var(--radius-control)] border border-signal-violet/25 bg-signal-violet/10 px-1.5 py-0.5 text-signal-violet-dim" data-change-after>
+                            <span class="shrink-0 font-mono text-[10px] font-semibold">新</span>
+                            <span class="truncate"><%= after_props[key].to_s.presence || "空" %></span>
+                          </span>
+                        </span>
+                      </div>
+                    <% end %>
+                    <% if changed_keys.empty? %>
+                      <div class="text-slate-500">没有检测到字段变化。</div>
+                    <% end %>
+                  </div>
+                  <details class="mt-2">
+                    <summary class="cursor-pointer text-slate-500">原始 JSON</summary>
+                    <div class="mt-2 grid grid-cols-2 gap-2">
+                      <pre class="max-h-48 overflow-auto whitespace-pre-wrap rounded-[var(--radius-control)] border border-signal-amber/25 bg-signal-amber/10 p-2 font-mono text-signal-amber-dim"><%= JSON.pretty_generate(before_props) %></pre>
+                      <pre class="max-h-48 overflow-auto whitespace-pre-wrap rounded-[var(--radius-control)] border border-signal-violet/25 bg-signal-violet/10 p-2 font-mono text-signal-violet-dim"><%= JSON.pretty_generate(after_props) %></pre>
+                    </div>
+                  </details>
+                </div>
+                <div class="mt-3 grid grid-cols-2 gap-2">
+                  <%= link_to "预览改动", preview_site_section_patch_path(@site, patch), class: "rounded-[var(--radius-control)] border border-paper-line bg-white px-3 py-2 text-center text-sm font-semibold text-slate-700 hover:bg-paper" %>
+                  <% if %w[pending reverted].include?(patch.status) %>
+                    <%= button_to "应用到草稿", apply_site_section_patch_path(@site, patch), method: :post, data: { turbo_submits_with: "正在应用..." }, class: "w-full rounded-[var(--radius-control)] border border-signal-violet/25 bg-signal-violet/10 px-3 py-2 text-sm font-semibold text-signal-violet-dim hover:bg-signal-violet/15" %>
+                    <%= button_to "忽略", dismiss_site_section_patch_path(@site, patch), method: :post, data: { turbo_submits_with: "正在忽略..." }, class: "w-full rounded-[var(--radius-control)] border border-paper-line bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-paper" %>
+                  <% elsif patch.status == "applied" %>
+                    <%= button_to "撤回", revert_site_section_patch_path(@site, patch), method: :post, data: { turbo_submits_with: "正在撤回..." }, class: "w-full rounded-[var(--radius-control)] border border-signal-amber/25 bg-signal-amber/10 px-3 py-2 text-sm font-semibold text-signal-amber-dim hover:bg-signal-amber/15" %>
+                  <% elsif patch.status == "testing" %>
+                    <div class="rounded-[var(--radius-control)] bg-slate-100 px-3 py-2 text-center text-sm font-semibold text-slate-700">测试中</div>
+                  <% elsif patch.status == "dismissed" %>
+                    <div class="rounded-[var(--radius-control)] bg-slate-100 px-3 py-2 text-center text-sm font-semibold text-slate-500">已忽略</div>
+                  <% end %>
+                </div>
+              <% end %>
+              <% if linked_experiment %>
+                <div class="mt-3 rounded-[var(--radius-control)] bg-slate-100 px-3 py-2 text-center text-sm font-semibold text-slate-700">实验<%= status_label(linked_experiment.status) %></div>
+              <% elsif section_unresolved_experiment && section_unresolved_experiment != linked_experiment %>
+                <div class="mt-3 rounded-[var(--radius-control)] bg-signal-amber/10 px-3 py-2 text-center text-sm font-semibold text-signal-amber-dim">该区块已有进行中的实验</div>
+              <% elsif recommendation.status == "applied" && recommendation.section_patch&.status == "applied" && winner_applied_experiment.blank? %>
+                <%= button_to "测试原版和新版", site_experiments_path(@site, recommendation_id: recommendation.id), method: :post, data: { turbo_submits_with: "正在启动..." }, class: "mt-3 w-full rounded-[var(--radius-control)] bg-console-950 px-3 py-2 text-sm font-semibold text-white hover:bg-console-900" %>
+              <% elsif %w[dismissed superseded applied].include?(recommendation.status) %>
+                <div class="mt-3 rounded-[var(--radius-control)] bg-slate-100 px-3 py-2 text-center text-sm font-semibold text-slate-500"><%= status_label(recommendation.status) %></div>
+              <% elsif recommendation.status == "tested" %>
+                <div class="mt-3 rounded-[var(--radius-control)] bg-signal-amber/10 px-3 py-2 text-center text-sm font-semibold text-signal-amber-dim">查看已完成实验</div>
+              <% else %>
+                <% launch_label = recommendation.section_patch&.status == "applied" ? "测试原版和新版" : "启动实验" %>
+                <%= button_to launch_label, site_experiments_path(@site, recommendation_id: recommendation.id), method: :post, data: { turbo_submits_with: "正在启动..." }, class: "mt-3 w-full rounded-[var(--radius-control)] bg-console-950 px-3 py-2 text-sm font-semibold text-white hover:bg-console-900" %>
+              <% end %>
+            </div>
+          <% end %>
+          <% if @recommendations.empty? %>
+            <div class="rounded-[var(--radius-control)] bg-paper p-3 text-sm text-slate-500" data-inspector-target="overview">
+              <div>生成诊断后，这里会出现可应用的改动建议。</div>
+              <%= button_to "生成诊断", site_ai_audits_path(@site), method: :post, data: { turbo_submits_with: "正在生成诊断..." }, class: "mt-3 w-full rounded-[var(--radius-control)] bg-signal-amber px-3 py-2 text-sm font-semibold text-console-950 hover:bg-signal-amber-dim" %>
+            </div>
+          <% end %>
+        </div>
+      </section>
+
+      <%= render "experiments", site: @site, experiments: @experiments, experiment_results: @experiment_results %>
+
+      <section class="rounded-[var(--radius-panel)] border border-console-line bg-console-950 p-4 console-panel-shadow" data-inspector-target="overview">
+        <h2 class="font-display text-sm font-semibold text-white">实时事件流</h2>
+        <div id="event_stream" class="mt-4 max-h-96 space-y-2 overflow-auto" data-controller="event-stream" data-event-stream-limit-value="25" data-event-stream-quiet-threshold-value="5">
+          <%= render partial: "events/event", collection: @events, as: :event %>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>

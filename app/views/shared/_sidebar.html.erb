@@ -1,0 +1,38 @@
+<aside class="fixed inset-y-0 left-0 z-20 hidden w-64 border-r border-console-line bg-console-950 text-slate-100 lg:block">
+  <div class="flex h-full flex-col">
+    <div class="border-b border-console-line px-6 py-5">
+      <div class="font-display text-xl font-semibold tracking-tight text-white">LaunchPulse</div>
+      <div class="mt-1 text-xs text-slate-400">增长控制台</div>
+      <svg viewBox="0 0 180 32" class="mt-4 h-8 w-full text-signal-amber" aria-hidden="true">
+        <polyline class="signal-line" points="0,18 18,18 27,9 37,24 48,15 64,15 75,7 88,24 99,18 118,18 128,12 138,21 149,16 180,16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </div>
+    <nav class="flex-1 space-y-1 px-3 py-4">
+      <% dashboard_active = current_page?(root_path) %>
+      <%= link_to root_path, class: "group relative block rounded-[var(--radius-control)] px-3 py-2 text-sm font-medium transition #{dashboard_active ? "bg-console-900 text-signal-amber-tint" : "text-slate-300 hover:bg-console-900 hover:text-white"}" do %>
+        <span class="absolute left-0 top-1/2 h-0 w-[3px] -translate-y-1/2 rounded-full bg-signal-amber transition-all duration-150 group-hover:h-6 <%= "h-6" if dashboard_active %>"></span>
+        <span class="pl-3">总览</span>
+      <% end %>
+      <% current_account&.sites&.order(:name)&.each do |site| %>
+        <% score_color = if site.growth_score.to_i >= 80
+          "bg-signal-amber"
+        elsif site.growth_score.to_i >= 60
+          "bg-signal-violet"
+        else
+          "bg-slate-500"
+        end %>
+        <% active = current_page?(site_path(site)) %>
+        <%= link_to site_path(site), class: "group relative flex items-center gap-3 rounded-[var(--radius-control)] px-3 py-2 text-sm transition #{active ? "bg-console-900 text-signal-amber-tint" : "text-slate-300 hover:bg-console-900 hover:text-white"}" do %>
+          <span class="absolute left-0 top-1/2 h-0 w-[3px] -translate-y-1/2 rounded-full bg-signal-amber transition-all duration-150 group-hover:h-6 <%= "h-6" if active %>"></span>
+          <span class="ml-3 h-1.5 w-1.5 rounded-full <%= score_color %>"></span>
+          <span class="truncate"><%= site.name %></span>
+        <% end %>
+      <% end %>
+    </nav>
+    <div class="border-t border-console-line p-4">
+      <div class="text-sm font-medium text-white"><%= current_user.name %></div>
+      <div class="text-xs text-slate-400"><%= current_user.email %></div>
+      <%= button_to "退出登录", session_path, method: :delete, class: "mt-3 w-full rounded-[var(--radius-control)] border border-console-line px-3 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:bg-console-900 hover:text-white" %>
+    </div>
+  </div>
+</aside>

@@ -1,0 +1,65 @@
+<div class="space-y-6">
+  <header class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div>
+      <h1 class="font-display text-3xl font-semibold tracking-tight text-console-950">站点</h1>
+      <p class="mt-1 text-sm text-slate-500">观察转化质量、实验进展和实时访客行为。</p>
+    </div>
+  </header>
+
+  <% if @sites.empty? %>
+    <section class="rounded-[var(--radius-panel)] border border-paper-line bg-white p-6 console-panel-shadow">
+      <div class="max-w-xl">
+        <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Workspace</div>
+        <h2 class="mt-2 font-display text-2xl font-semibold tracking-tight text-console-950">还没有站点</h2>
+        <p class="mt-2 text-sm leading-6 text-slate-500">创建或导入站点后，这里会显示增长分数、转化趋势和实验状态。</p>
+      </div>
+    </section>
+  <% else %>
+    <div class="grid gap-5 lg:grid-cols-3">
+      <% @sites.each do |site| %>
+      <% summary = @dashboard_summaries.fetch(site.id) %>
+      <% score_color = site.growth_score.to_i >= 80 ? "text-signal-amber" : site.growth_score.to_i >= 60 ? "text-signal-violet" : "text-slate-400" %>
+      <% sparkline_gradient_id = "conversion_trend_#{site.id}" %>
+      <%= link_to site_path(site), class: "signal-card group rounded-[var(--radius-panel)] border border-paper-line bg-white p-5 console-panel-shadow transition duration-150 hover:-translate-y-0.5 hover:border-signal-amber/40" do %>
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <div class="text-sm text-slate-500"><%= site.industry %></div>
+            <h2 class="mt-1 font-display text-xl font-semibold tracking-tight text-console-950"><%= site.name %></h2>
+          </div>
+          <div class="relative grid h-16 w-16 place-items-center" data-controller="gauge" data-gauge-score-value="<%= site.growth_score %>">
+            <svg viewBox="0 0 36 36" class="absolute inset-0 h-full w-full -rotate-90 <%= score_color %>" aria-hidden="true">
+              <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" stroke-opacity="0.14" stroke-width="3"></circle>
+              <circle data-gauge-target="ring" cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"></circle>
+            </svg>
+            <span class="font-mono text-sm font-semibold text-console-950" data-controller="count-up" data-count-up-end-value="<%= site.growth_score %>"><%= site.growth_score %></span>
+          </div>
+        </div>
+        <div class="mt-6 grid grid-cols-3 gap-3 text-sm">
+          <div>
+            <div class="font-mono font-semibold text-console-950"><%= number_with_delimiter(summary[:page_views]) %></div>
+            <div class="text-xs text-slate-500">浏览</div>
+          </div>
+          <div>
+            <div class="font-mono font-semibold text-console-950"><%= summary[:conversion_rate] %>%</div>
+            <div class="text-xs text-slate-500">转化率</div>
+            <svg viewBox="0 0 72 18" class="mt-1 h-4 w-full text-signal-violet" aria-hidden="true" data-sparkline-trend>
+              <defs>
+                <linearGradient id="<%= sparkline_gradient_id %>" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="currentColor" stop-opacity="0.22" />
+                  <stop offset="100%" stop-color="currentColor" stop-opacity="0" />
+                </linearGradient>
+              </defs>
+              <path d="<%= sparkline_area_path(summary[:conversion_trend]) %>" fill="url(#<%= sparkline_gradient_id %>)" />
+              <path d="<%= sparkline_path(summary[:conversion_trend]) %>" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+          <div>
+            <div class="font-mono font-semibold text-console-950"><%= @active_experiment_counts.fetch(site.id, 0) %></div>
+            <div class="text-xs text-slate-500">实验</div>
+          </div>
+        </div>
+      <% end %>
+      <% end %>
+    </div>
+  <% end %>
+</div>

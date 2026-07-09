@@ -1,0 +1,40 @@
+<main>
+  <% if @submitted %>
+    <div class="border-b px-6 py-3 text-sm font-medium" style="border-color: color-mix(in srgb, var(--site-accent) 35%, transparent); background: color-mix(in srgb, var(--site-accent) 14%, var(--site-surface)); color: var(--site-ink);">
+      已收到你的需求。
+    </div>
+  <% end %>
+  <% if @ordered %>
+    <div class="border-b px-6 py-3 text-sm font-medium" style="border-color: color-mix(in srgb, var(--site-accent) 35%, transparent); background: color-mix(in srgb, var(--site-accent) 14%, var(--site-surface)); color: var(--site-ink);">
+      订单已创建。
+    </div>
+  <% end %>
+
+  <% @sections.each do |section| %>
+    <% section_key = section.uid.presence || section.id %>
+    <% assignment = @assignments_by_section_uid[section_key] || @assignments_by_section_uid[section.id] %>
+    <%# control 也必须读实验创建时保存的数据；如果读当前快照，后续发布会悄悄改掉实验基线。 %>
+    <% props = assignment&.variant&.props.presence || section.props %>
+    <%= render Sections::Renderer.new(section).partial_path,
+      section: section,
+      props: props,
+      public_site: @site,
+      form: @forms_by_section_uid[section_key] || @forms_by_section_uid[section.id] %>
+  <% end %>
+
+  <% if @demo_debug %>
+    <aside class="fixed bottom-4 right-4 z-50 max-w-xs rounded-[var(--radius-control)] border bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-lg backdrop-blur" style="border-color: color-mix(in srgb, var(--site-accent) 22%, transparent);">
+      <details>
+        <summary class="cursor-pointer font-semibold text-slate-950">演示运行信息</summary>
+        <div class="mt-1">访客 <%= @demo_debug_visitor_id.to_s.first(8) %></div>
+      <% if @demo_debug_assignments.present? %>
+        <ul class="mt-1 space-y-0.5">
+          <% @demo_debug_assignments.each do |assignment| %>
+            <li><%= assignment %></li>
+          <% end %>
+        </ul>
+      <% end %>
+      </details>
+    </aside>
+  <% end %>
+</main>

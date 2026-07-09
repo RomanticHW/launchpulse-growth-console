@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUTPUT="${1:-"$ROOT/../launchpulse-demo.zip"}"
+
+cd "$ROOT"
+rm -f "$OUTPUT"
+
+zip -r "$OUTPUT" . \
+  -x ".git/*" \
+  -x ".kamal/*" \
+  -x "__MACOSX/*" \
+  -x "*.DS_Store" \
+  -x ".DS_Store" \
+  -x "tmp/*" \
+  -x "log/*" \
+  -x "storage/*" \
+  -x "output/*" \
+  -x ".playwright-cli/*" \
+  -x "vendor/bundle/*" \
+  -x "public/assets/*" \
+  -x "app/assets/builds/*" \
+  -x "config/master.key" \
+  -x ".bundle/*" \
+  -x "coverage/*"
+
+python3 - "$OUTPUT" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    names = archive.namelist()
+    non_ascii_readmes = [
+        name for name in names
+        if name.startswith("readme/") and any(ord(char) > 127 for char in name)
+    ]
+    blocked = []
+    for name in names:
+        if (
+            name == ".git/" or name.startswith(".git/") or
+            name == "__MACOSX/" or name.startswith("__MACOSX/") or
+            name.endswith(".DS_Store") or
+            name == "tmp/" or name.startswith("tmp/") or
+            name == "log/" or name.startswith("log/") or
+            name == "storage/" or name.startswith("storage/") or
+            name == "output/" or name.startswith("output/") or
+            name == ".playwright-cli/" or name.startswith(".playwright-cli/") or
+            name == "config/master.key" or
+            name == "public/assets/" or name.startswith("public/assets/") or
+            name == "app/assets/builds/" or name.startswith("app/assets/builds/")
+        ):
+            blocked.append(name)
+
+if non_ascii_readmes:
+    raise SystemExit("Non-ASCII readme filenames in package: " + ", ".join(non_ascii_readmes))
+if blocked:
+    raise SystemExit("Unexpected local artifacts in package: " + ", ".join(blocked))
+PY
+
+echo "Created $OUTPUT"
+echo "Package verification passed."
+echo "Use this package for sharing. Do not zip the project folder directly from Finder or the OS file browser."

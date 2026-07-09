@@ -1,0 +1,29 @@
+<section class="px-6 py-14 text-[var(--site-ink)] sm:px-8" style="background: color-mix(in srgb, var(--site-surface) 72%, var(--site-base));">
+  <div class="mx-auto max-w-6xl">
+    <h2 class="font-site-display text-3xl font-semibold tracking-tight"><%= props["headline"] || "清晰定价" %></h2>
+    <div class="mt-7 grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-4">
+    <% plans = Array(props["plans"]) %>
+    <% plans.each_with_index do |plan, index| %>
+      <% highlighted = plan["highlight"].present? || (plans.size >= 3 && index == 1) %>
+      <div class="rounded-[var(--radius-panel)] border p-5 transition duration-150 <%= "site-pricing-card--highlighted md:-translate-y-2" if highlighted %>" style="border-color: <%= highlighted ? "var(--site-accent)" : "color-mix(in srgb, var(--site-accent) 22%, transparent)" %>; background: var(--site-surface);">
+        <% if highlighted %>
+          <div class="mb-3 inline-flex rounded-[var(--radius-pill)] px-2.5 py-1 font-mono text-xs font-semibold" style="background: color-mix(in srgb, var(--site-accent) 16%, transparent); color: var(--site-accent);">推荐</div>
+        <% end %>
+        <div class="font-site-display text-lg font-semibold"><%= plan["name"] %></div>
+        <div class="mt-3 font-mono text-3xl font-semibold"><%= plan["price"] %></div>
+        <p class="mt-2 text-sm opacity-70"><%= plan["description"] %></p>
+        <% if local_assigns[:public_site] %>
+          <% plan_key = plan["plan_key"].presence || plan["name"].to_s.parameterize %>
+          <%= button_to "选择方案",
+            public_site_plan_checkout_path(public_site.slug, plan_key:),
+            method: :post,
+            params: { section_uid: section.uid },
+            aria: { label: "选择 #{plan["name"]} 方案" },
+            class: "mt-5 w-full rounded-[var(--radius-control)] px-3 py-2 text-sm font-semibold transition active:translate-y-px",
+            style: "background: var(--site-accent); color: var(--site-on-accent);" %>
+        <% end %>
+      </div>
+    <% end %>
+    </div>
+  </div>
+</section>

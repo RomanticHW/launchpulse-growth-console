@@ -1,0 +1,14 @@
+<div class="event-row-live rounded-[var(--radius-control)] border border-console-line bg-console-950/95 px-3 py-2 font-mono text-xs text-slate-200" data-event-row>
+  <div class="flex items-center justify-between gap-2">
+    <span class="inline-flex items-center gap-2 font-semibold text-white">
+      <span class="h-2 w-2 rounded-full <%= event_type_color(event.event_type) %>"></span>
+      <%= event_type_label(event.event_type) %>
+    </span>
+    <span class="text-slate-500"><%= relative_time_label(event.occurred_at) %></span>
+  </div>
+  <div class="mt-1 grid gap-1 text-slate-400 sm:grid-cols-3">
+    <span class="truncate"><%= event.visitor_id %></span>
+    <span class="truncate"><%= source_label(event.source) %></span>
+    <span class="truncate text-right sm:text-left"><%= device_label(event.device) %></span>
+  </div>
+</div>

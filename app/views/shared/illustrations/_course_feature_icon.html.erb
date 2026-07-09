@@ -1,0 +1,34 @@
+<% icon_index = index.to_i %>
+<svg viewBox="0 0 120 120" aria-hidden="true" focusable="false" data-illustration="course-feature-<%= icon_index %>" class="h-full w-full">
+  <% if icon_index % 3 == 0 %>
+    <path d="M60 25l12 35-32 35-12-35Z" fill="var(--site-accent)" />
+    <g fill="none" stroke="var(--site-ink)" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.35" stroke-width="2.5">
+      <circle cx="60" cy="60" r="42" />
+      <path d="M60 25l12 35-32 35-12-35Z" />
+      <path d="M48 72l24-24" />
+    </g>
+    <circle cx="84" cy="36" r="6" fill="var(--site-accent-2)" fill-opacity="0.8" />
+  <% elsif icon_index % 3 == 1 %>
+    <path d="M24 32h72v20H24Z" fill="var(--site-accent)" />
+    <g fill="none" stroke="var(--site-ink)" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.35" stroke-width="2.5">
+      <path d="M24 32h72v56H24Z" />
+      <path d="M24 52h72" />
+      <path d="M36 68h23" />
+      <path d="M36 78h36" />
+      <path d="M72 32v20" />
+    </g>
+    <path d="M72 68h18v14H72Z" fill="var(--site-accent-2)" fill-opacity="0.78" />
+  <% else %>
+    <path d="M33 28h54v64H33Z" fill="var(--site-accent)" />
+    <g fill="none" stroke="var(--site-ink)" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.35" stroke-width="2.5">
+      <path d="M33 28h54v64H33Z" />
+      <path d="M45 22v16" />
+      <path d="M75 22v16" />
+      <path d="M33 47h54" />
+      <path d="M46 63h11" />
+      <path d="M65 63h11" />
+      <path d="M46 77h11" />
+    </g>
+    <path d="M69 79l8 8 17-21" fill="none" stroke="var(--site-accent-2)" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.82" stroke-width="4" />
+  <% end %>
+</svg>

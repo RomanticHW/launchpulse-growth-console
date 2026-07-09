@@ -1,0 +1,9 @@
+<section class="px-6 py-16 text-[var(--site-ink)] sm:px-8" style="background: color-mix(in srgb, var(--site-accent) 10%, var(--site-base));">
+  <div class="relative mx-auto max-w-4xl overflow-hidden rounded-[var(--radius-panel)] border p-8" style="border-color: color-mix(in srgb, var(--site-accent) 26%, transparent); background: color-mix(in srgb, var(--site-surface) 88%, transparent);">
+    <div class="absolute left-5 top-5 h-10 w-10 opacity-75">
+      <%= render site_testimonial_illustration(local_assigns[:public_site] || @site) %>
+    </div>
+    <blockquote class="relative pl-12 font-site-display text-2xl font-medium leading-snug md:text-3xl">“<%= props["quote"] %>”</blockquote>
+    <div class="relative mt-5 font-mono text-sm" style="color: var(--site-accent);"><%= props["author"] %></div>
+  </div>
+</section>

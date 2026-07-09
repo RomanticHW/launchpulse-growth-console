@@ -1,0 +1,99 @@
+<div class="space-y-5">
+  <header class="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+    <div>
+      <div class="text-sm text-slate-500"><%= @site.name %></div>
+      <h1 class="font-display text-3xl font-semibold tracking-tight text-console-950">版本 <%= @diff.fetch("from_version") %> 差异</h1>
+    </div>
+    <div class="flex gap-2">
+      <%= link_to "返回站点", site_path(@site), class: "rounded-[var(--radius-control)] border border-paper-line bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-paper" %>
+      <%= link_to "原始 JSON", diff_site_publishing_path(@site, snapshot_id: @snapshot.id, format: :json), class: "rounded-[var(--radius-control)] border border-paper-line bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-paper" %>
+    </div>
+  </header>
+
+  <section class="rounded-[var(--radius-panel)] border border-paper-line bg-white p-5 console-panel-shadow">
+    <div class="flex flex-col gap-5 md:flex-row md:items-center">
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-3">
+          <span class="rounded-[var(--radius-pill)] bg-signal-amber/10 px-3 py-1 font-mono text-xs font-semibold text-signal-amber-dim">快照</span>
+          <div class="h-px flex-1 bg-gradient-to-r from-signal-amber via-paper-line to-signal-violet"></div>
+          <span class="rounded-[var(--radius-pill)] bg-signal-violet/10 px-3 py-1 font-mono text-xs font-semibold text-signal-violet-dim">当前草稿</span>
+        </div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-3">
+          <div>
+            <div class="text-xs text-slate-500">快照区块</div>
+            <div class="mt-1 font-mono text-2xl font-semibold text-console-950"><%= @diff.fetch("snapshot_sections") %></div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">当前区块</div>
+            <div class="mt-1 font-mono text-2xl font-semibold text-console-950"><%= @diff.fetch("current_sections") %></div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">未变化</div>
+            <div class="mt-1 font-mono text-2xl font-semibold text-console-950"><%= @diff.fetch("unchanged_count") %></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="rounded-[var(--radius-panel)] border border-paper-line bg-white p-4 console-panel-shadow">
+    <h2 class="font-display text-sm font-semibold text-console-950">有变化的区块</h2>
+    <div class="mt-3 space-y-3">
+      <% @diff.fetch("changed_sections").each do |section| %>
+        <div class="rounded-[var(--radius-control)] bg-paper p-3 text-sm">
+          <div class="font-semibold text-console-950"><%= section.fetch("name") %> <span class="font-mono text-xs font-normal text-slate-500"><%= section.fetch("kind") %></span></div>
+          <div class="mt-2 space-y-2 text-xs text-slate-600">
+            <% section.fetch("changes").each do |key, change| %>
+              <div class="grid gap-2 md:grid-cols-[96px_1fr]">
+                <span class="font-medium text-console-950"><%= key %></span>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div class="rounded-[var(--radius-control)] border border-signal-amber/20 bg-signal-amber/10 p-2.5 text-signal-amber-dim" data-diff-value-panel="before">
+                    <div class="mb-1 text-[10px] font-bold uppercase tracking-wide text-signal-amber-dim">修改前</div>
+                    <div class="max-h-72 overflow-y-auto whitespace-pre-wrap break-words pr-1 font-mono text-[11px] leading-5"><%= display_diff_value(change["before"]) %></div>
+                  </div>
+                  <div class="rounded-[var(--radius-control)] border border-signal-violet/20 bg-signal-violet/10 p-2.5 text-signal-violet-dim" data-diff-value-panel="after">
+                    <div class="mb-1 text-[10px] font-bold uppercase tracking-wide text-signal-violet-dim">修改后</div>
+                    <div class="max-h-72 overflow-y-auto whitespace-pre-wrap break-words pr-1 font-mono text-[11px] leading-5"><%= display_diff_value(change["after"]) %></div>
+                  </div>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+      <% if @diff.fetch("changed_sections").empty? %>
+        <div class="text-sm text-slate-500">没有区块属性变化。</div>
+      <% end %>
+    </div>
+  </section>
+
+  <section class="grid gap-5 md:grid-cols-2">
+    <div class="rounded-[var(--radius-panel)] border border-emerald-200 bg-white p-4 console-panel-shadow">
+      <h2 class="font-display text-sm font-semibold text-console-950">新增区块</h2>
+      <div class="mt-3 space-y-2 text-sm text-slate-600">
+        <% @diff.fetch("added_sections").each do |section| %>
+          <div class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-emerald-500"></span><span><%= section.fetch("name") %></span> <span class="font-mono text-xs text-slate-400"><%= section.fetch("kind") %></span></div>
+        <% end %>
+        <% if @diff.fetch("added_sections").empty? %>
+          <div class="text-sm text-slate-500">没有新增区块。</div>
+        <% end %>
+      </div>
+    </div>
+    <div class="rounded-[var(--radius-panel)] border border-red-200 bg-white p-4 console-panel-shadow">
+      <h2 class="font-display text-sm font-semibold text-console-950">删除区块</h2>
+      <div class="mt-3 space-y-2 text-sm text-slate-600">
+        <% @diff.fetch("removed_sections").each do |section| %>
+          <div class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-red-500"></span><span><%= section.fetch("name") %></span> <span class="font-mono text-xs text-slate-400"><%= section.fetch("kind") %></span></div>
+        <% end %>
+        <% if @diff.fetch("removed_sections").empty? %>
+          <div class="text-sm text-slate-500">没有删除区块。</div>
+        <% end %>
+      </div>
+    </div>
+  </section>
+
+  <details class="rounded-[var(--radius-panel)] border border-paper-line bg-white p-4 console-panel-shadow">
+    <summary class="cursor-pointer text-sm font-semibold text-console-950">原始 JSON</summary>
+    <p class="mt-3 text-sm text-slate-500">完整快照 JSON 可以通过上方链接查看。</p>
+  </details>
+</div>

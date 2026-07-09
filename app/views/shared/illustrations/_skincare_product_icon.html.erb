@@ -1,0 +1,43 @@
+<% product_variant = local_assigns[:variant].presence || "bottle" %>
+<svg viewBox="0 0 120 120" aria-hidden="true" focusable="false" data-illustration="skincare-product-<%= product_variant %>" class="h-full w-full">
+  <% case product_variant %>
+  <% when "serum" %>
+    <path d="M46 37h28c7 0 12 5 12 12v42c0 8-6 14-14 14H48c-8 0-14-6-14-14V49c0-7 5-12 12-12Z" fill="var(--site-accent)" />
+    <g fill="none" stroke="var(--site-ink)" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.35" stroke-width="2.5">
+      <path d="M46 37h28c7 0 12 5 12 12v42c0 8-6 14-14 14H48c-8 0-14-6-14-14V49c0-7 5-12 12-12Z" />
+      <path d="M49 37V22h22v15" />
+      <path d="M54 22V12h12v10" />
+      <path d="M48 69h24" />
+      <path d="M48 83h16" />
+    </g>
+    <path d="M91 32c9 11 9 21 0 31-9-10-9-20 0-31Z" fill="var(--site-accent-2)" fill-opacity="0.78" />
+  <% when "cream" %>
+    <path d="M30 55h60l-7 43H37Z" fill="var(--site-accent)" />
+    <g fill="none" stroke="var(--site-ink)" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.35" stroke-width="2.5">
+      <path d="M30 55h60l-7 43H37Z" />
+      <path d="M36 41h48v14H36Z" />
+      <path d="M42 71h36" />
+      <path d="M48 84h24" />
+    </g>
+    <path d="M72 26c10-4 20-2 29 6-9 8-20 10-32 3 0-4 1-7 3-9Z" fill="var(--site-accent-2)" fill-opacity="0.75" />
+  <% when "cleanser" %>
+    <path d="M39 38h39c6 0 11 5 11 11v48H28V49c0-6 5-11 11-11Z" fill="var(--site-accent)" />
+    <g fill="none" stroke="var(--site-ink)" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.35" stroke-width="2.5">
+      <path d="M39 38h39c6 0 11 5 11 11v48H28V49c0-6 5-11 11-11Z" />
+      <path d="M50 38V22h28" />
+      <path d="M78 22v12" />
+      <path d="M44 69h29" />
+      <path d="M44 82h20" />
+    </g>
+    <path d="M92 48c8 10 8 19 0 29-8-10-8-19 0-29Z" fill="var(--site-accent-2)" fill-opacity="0.78" />
+  <% else %>
+    <path d="M42 35h36c6 0 11 5 11 11v48H31V46c0-6 5-11 11-11Z" fill="var(--site-accent)" />
+    <g fill="none" stroke="var(--site-ink)" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.35" stroke-width="2.5">
+      <path d="M42 35h36c6 0 11 5 11 11v48H31V46c0-6 5-11 11-11Z" />
+      <path d="M47 35V21h26v14" />
+      <path d="M45 68h30" />
+      <path d="M45 81h20" />
+    </g>
+    <circle cx="86" cy="30" r="8" fill="var(--site-accent-2)" fill-opacity="0.78" />
+  <% end %>
+</svg>

@@ -1,0 +1,100 @@
+<div id="analytics_summary" class="overflow-hidden rounded-[var(--radius-panel)] border border-paper-line bg-white p-4 console-panel-shadow">
+  <% funnel_max = summary[:funnel].values.map(&:to_i).max.to_i %>
+  <% top_sources = summary[:top_sources].presence || {} %>
+  <% top_devices = summary[:top_devices].presence || {} %>
+
+  <div class="flex items-start justify-between gap-4">
+    <div class="min-w-0">
+      <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Signal Board</div>
+      <h3 class="mt-1 font-display text-base font-semibold text-console-950">全站表现</h3>
+    </div>
+    <div class="rounded-[var(--radius-pill)] bg-signal-amber/10 px-2.5 py-1 text-xs font-semibold text-signal-amber-dim">实时</div>
+  </div>
+
+  <div class="mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+    <div class="min-w-0">
+      <div class="text-xs text-slate-500">页面浏览</div>
+      <div class="mt-1 truncate font-mono text-4xl font-semibold leading-none text-console-950 tabular-nums" data-controller="count-up" data-count-up-key-value="site-<%= site.id %>-summary-page-views" data-count-up-end-value="<%= summary[:page_views] %>"><%= number_with_delimiter(summary[:page_views]) %></div>
+    </div>
+    <div class="shrink-0 text-right">
+      <div class="text-xs text-slate-500">转化率</div>
+      <div class="mt-1 font-mono text-2xl font-semibold text-signal-violet-dim tabular-nums" data-controller="count-up" data-count-up-key-value="site-<%= site.id %>-summary-conversion-rate" data-count-up-end-value="<%= summary[:conversion_rate] %>" data-count-up-decimals-value="1" data-count-up-suffix-value="%"><%= summary[:conversion_rate] %>%</div>
+    </div>
+  </div>
+
+  <div class="mt-5 grid grid-cols-2 gap-4 border-y border-paper-line py-4">
+    <div class="min-w-0">
+      <div class="text-xs text-slate-500">独立访客</div>
+      <div class="mt-1 truncate font-mono text-xl font-semibold text-console-950 tabular-nums" data-controller="count-up" data-count-up-key-value="site-<%= site.id %>-summary-unique-visitors" data-count-up-end-value="<%= summary[:unique_visitors] %>"><%= number_with_delimiter(summary[:unique_visitors]) %></div>
+    </div>
+    <div class="min-w-0">
+      <div class="text-xs text-slate-500">漏斗步骤</div>
+      <div class="mt-1 font-mono text-xl font-semibold text-console-950 tabular-nums"><%= summary[:funnel].size %></div>
+    </div>
+  </div>
+
+  <div class="mt-4 space-y-3">
+    <% summary[:funnel].each do |step, count| %>
+      <% width = funnel_max.positive? ? ((count.to_f / funnel_max) * 100).round : 0 %>
+      <div>
+        <div class="mb-1.5 flex justify-between gap-2 text-[11px] text-slate-500">
+          <span class="min-w-0 truncate"><%= funnel_step_label(step) %></span>
+          <span class="shrink-0 font-mono tabular-nums"><%= number_with_delimiter(count) %></span>
+        </div>
+        <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+          <div class="h-full rounded-full bg-signal-amber" style="width: <%= width %>%"></div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+
+  <div class="mt-5 grid gap-4 border-t border-paper-line pt-4">
+    <div>
+      <div class="mb-2 text-xs font-semibold text-console-950">主要来源</div>
+      <div class="space-y-2.5 text-xs text-slate-600">
+        <% if top_sources.any? %>
+          <% sources_total = top_sources.values.map(&:to_i).sum %>
+          <% top_sources.each do |source, count| %>
+            <% label = source_label(source) %>
+            <% width = sources_total.positive? ? ((count.to_f / sources_total) * 100).round : 0 %>
+            <div>
+              <div class="flex justify-between gap-2 mb-1">
+                <span class="min-w-0 truncate" title="<%= label %>"><%= label %></span>
+                <strong class="shrink-0 font-mono text-console-950 tabular-nums"><%= count %></strong>
+              </div>
+              <div class="h-1 overflow-hidden rounded-full bg-slate-100">
+                <div class="h-full rounded-full bg-signal-violet/60" style="width: <%= width %>%"></div>
+              </div>
+            </div>
+          <% end %>
+        <% else %>
+          <div class="text-slate-400">暂无来源数据</div>
+        <% end %>
+      </div>
+    </div>
+
+    <div>
+      <div class="mb-2 text-xs font-semibold text-console-950">常用设备</div>
+      <div class="space-y-2.5 text-xs text-slate-600">
+        <% if top_devices.any? %>
+          <% devices_total = top_devices.values.map(&:to_i).sum %>
+          <% top_devices.each do |device, count| %>
+            <% label = device_label(device) %>
+            <% width = devices_total.positive? ? ((count.to_f / devices_total) * 100).round : 0 %>
+            <div>
+              <div class="flex justify-between gap-2 mb-1">
+                <span class="min-w-0 truncate" title="<%= label %>"><%= label %></span>
+                <strong class="shrink-0 font-mono text-console-950 tabular-nums"><%= count %></strong>
+              </div>
+              <div class="h-1 overflow-hidden rounded-full bg-slate-100">
+                <div class="h-full rounded-full bg-signal-amber/60" style="width: <%= width %>%"></div>
+              </div>
+            </div>
+          <% end %>
+        <% else %>
+          <div class="text-slate-400">暂无设备数据</div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

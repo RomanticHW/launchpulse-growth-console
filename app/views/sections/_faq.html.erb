@@ -1,0 +1,13 @@
+<section class="bg-[var(--site-base)] px-6 py-14 text-[var(--site-ink)] sm:px-8">
+  <div class="mx-auto max-w-4xl">
+    <h2 class="font-site-display text-3xl font-semibold tracking-tight"><%= props["headline"] || "常见问题" %></h2>
+  <div class="mt-7 overflow-hidden rounded-[var(--radius-panel)] border" style="border-color: color-mix(in srgb, var(--site-accent) 22%, transparent); background: var(--site-surface);">
+    <% Array(props["items"]).each do |item| %>
+      <div class="border-b p-5 last:border-b-0" style="border-color: color-mix(in srgb, var(--site-accent) 16%, transparent);">
+        <div class="font-site-display text-lg font-semibold"><%= item["question"] %></div>
+        <p class="mt-2 text-sm leading-6 opacity-75"><%= item["answer"] %></p>
+      </div>
+    <% end %>
+  </div>
+  </div>
+</section>
