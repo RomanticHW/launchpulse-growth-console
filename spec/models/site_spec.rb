@@ -10,4 +10,13 @@ RSpec.describe Site do
     expect { site.destroy! }.not_to raise_error
     expect(Form.exists?(site_id: site.id)).to be(false)
   end
+
+  it "enforces slug uniqueness globally, not only per account" do
+    create(:site, account: create(:account), slug: "shared-shop")
+    other = build(:site, account: create(:account), slug: "shared-shop")
+
+    expect(other).not_to be_valid
+    expect(other.errors[:slug]).to be_present
+  end
 end
+

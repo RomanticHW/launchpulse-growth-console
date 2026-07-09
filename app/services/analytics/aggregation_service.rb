@@ -68,7 +68,14 @@ module Analytics
     def explicit_assignment_for_event
       return nil unless @event.experiment_id && @event.variant
 
-      assignment = assignment_for(@event.experiment)
+      experiment = @event.experiment
+      return [] unless experiment
+      # Explicit stamps still honor the conversion window: once a winner is applied,
+      # do not keep writing new conversion rows from late/replayed events.
+      return [] unless experiment.winner_applied_at.nil?
+      return [] unless %w[active paused completed].include?(experiment.status)
+
+      assignment = assignment_for(experiment)
       return [] unless assignment
 
       [ assignment ]
@@ -88,11 +95,12 @@ module Analytics
       section_uid = event_metadata["section_uid"].presence
       return nil unless section_uid
 
-      experiment = @site.experiments.active.joins(:section).find_by(sections: { uid: section_uid })
+      experiment = @site.experiments.open_for_conversion.joins(:section).find_by(sections: { uid: section_uid })
       return [] unless experiment
 
       # 聚合服务不补造曝光；assignment 应该由公开运行时或事件入口在事件创建前完成。
       # 否则后台导入一条转化事件会倒推出一次访客分流，口径会变得不清楚。
+      # 暂停/完成后只接受已有 assignment，不给新访客补分流。
       assignment = assignment_for(experiment)
       if assignment && @event.experiment_id.blank?
         @event.update!(experiment:, variant: assignment.variant, variant_key: assignment.variant.key)
@@ -102,7 +110,7 @@ module Analytics
 
     def generic_assignments_for_event
       # 没有区块上下文时只给目标匹配的实验记转化，避免 form_submit 实验里出现 order_created 噪声记录。
-      @site.experiments.active.includes(:assignments).filter_map do |experiment|
+      @site.experiments.open_for_conversion.includes(:assignments).filter_map do |experiment|
         next unless experiment.primary_goal == @event.event_type || experiment.primary_goal == "any_conversion"
 
         assignment_for(experiment)
@@ -112,6 +120,8 @@ module Analytics
     def assignment_for(experiment)
       assignment = experiment.assignments.find_by(visitor_id: @event.visitor_id)
       return matching_assignment_or_nil(assignment) if assignment
+      # Only active experiments may create assignments during aggregation (explicit event stamp path).
+      return nil unless experiment.active?
       return nil unless @event.experiment_id == experiment.id && @event.variant
 
       experiment.assignments.create_or_find_by!(visitor_id: @event.visitor_id) do |record|

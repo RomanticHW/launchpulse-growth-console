@@ -439,4 +439,92 @@ RSpec.describe Analytics::AggregationService do
     expect(broadcaster).to have_received(:broadcast_summary)
     expect(broadcaster).not_to have_received(:broadcast_experiments)
   end
+
+  it "attributes form_submit conversion when experiment is paused but assignment exists" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    experiment = create(:experiment, site:, section:, status: "paused", primary_goal: "form_submit")
+    variant = create(:variant, experiment:)
+    assignment = experiment.assignments.create!(visitor_id: "visitor-1", variant:)
+    event = site.events.create!(
+      event_type: "form_submit",
+      visitor_id: "visitor-1",
+      source: "direct",
+      device: "desktop",
+      metadata: { "section_uid" => section.uid },
+      occurred_at: Time.current
+    )
+
+    described_class.new(event).call
+
+    expect(assignment.conversions.where(conversion_type: "form_submit").count).to eq(1)
+  end
+
+  it "does not attribute conversion after winner is applied" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    experiment = create(:experiment, site:, section:, status: "completed", winner_applied_at: Time.current, primary_goal: "form_submit")
+    variant = create(:variant, experiment:)
+    assignment = experiment.assignments.create!(visitor_id: "visitor-1", variant:)
+    event = site.events.create!(
+      event_type: "form_submit",
+      visitor_id: "visitor-1",
+      source: "direct",
+      device: "desktop",
+      metadata: { "section_uid" => section.uid },
+      occurred_at: Time.current
+    )
+
+    described_class.new(event).call
+
+    expect(assignment.conversions.count).to eq(0)
+  end
+
+  it "does not create a new assignment during aggregation for paused experiments" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    experiment = create(:experiment, site:, section:, status: "paused", primary_goal: "form_submit")
+    create(:variant, experiment:)
+    event = site.events.create!(
+      event_type: "form_submit",
+      visitor_id: "visitor-new",
+      source: "direct",
+      device: "desktop",
+      metadata: { "section_uid" => section.uid },
+      occurred_at: Time.current
+    )
+
+    described_class.new(event).call
+
+    expect(experiment.assignments.where(visitor_id: "visitor-new")).to be_empty
+    expect(experiment.conversions).to be_empty
+  end
+
+  it "does not attribute explicitly stamped conversions after the winner is applied" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    experiment = create(:experiment, site:, section:, status: "completed", winner_applied_at: Time.current, primary_goal: "form_submit")
+    variant = create(:variant, experiment:)
+    assignment = experiment.assignments.create!(visitor_id: "visitor-1", variant:)
+    event = site.events.create!(
+      event_type: "form_submit",
+      visitor_id: "visitor-1",
+      source: "direct",
+      device: "desktop",
+      experiment:,
+      variant:,
+      variant_key: variant.key,
+      occurred_at: Time.current
+    )
+
+    described_class.new(event).call
+
+    expect(assignment.conversions.count).to eq(0)
+  end
 end
+
+

@@ -11,6 +11,16 @@ RSpec.describe "Public sites" do
     site
   end
 
+  it "rejects a second published site with the same public slug across accounts" do
+    account_a = create(:account)
+    account_b = create(:account)
+    create(:site, account: account_a, slug: "collision-slug", status: "published")
+
+    expect {
+      create(:site, account: account_b, slug: "collision-slug", status: "published")
+    }.to raise_error(ActiveRecord::RecordInvalid)
+  end
+
   it "renders the latest published snapshot instead of unpublished draft sections" do
     site = create(:site, slug: "snapshot-demo", status: "published")
     page = create(:page, site:)

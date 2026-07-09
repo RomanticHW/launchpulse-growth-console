@@ -1,5 +1,6 @@
 class PublishingController < ApplicationController
   before_action :set_site
+  before_action :require_editor!, only: %i[create rollback]
 
   def create
     snapshot = Sites::SnapshotService.new(@site).publish!(user: current_user, note: "手动发布")
@@ -11,7 +12,7 @@ class PublishingController < ApplicationController
     snapshot = @site.published_snapshots.find(params[:snapshot_id])
     new_snapshot = Sites::SnapshotService.new(@site).rollback!(snapshot, user: current_user)
     redirect_to @site, notice: "已回滚到版本 #{snapshot.version}，并发布为版本 #{new_snapshot.version}。"
-  rescue Sites::SnapshotService::ChecksumMismatch => error
+  rescue Sites::SnapshotService::ChecksumMismatch, Sites::SnapshotService::UnresolvedExperiments => error
     redirect_to @site, alert: error.message
   end
 
@@ -30,3 +31,4 @@ class PublishingController < ApplicationController
     @site = current_account.sites.find(params[:site_id])
   end
 end
+

@@ -17,8 +17,14 @@ module Analytics
       )
     end
 
-    def broadcast_summary
-      return unless claim_broadcast_slot("summary", SUMMARY_THROTTLE_WINDOW)
+    def broadcast_summary(force: false)
+      unless force
+        claimed = claim_broadcast_slot("summary", SUMMARY_THROTTLE_WINDOW)
+        unless claimed
+          schedule_trailing_refresh(:summary)
+          return
+        end
+      end
 
       Turbo::StreamsChannel.broadcast_replace_to(
         metrics_stream_name,
@@ -28,8 +34,14 @@ module Analytics
       )
     end
 
-    def broadcast_experiments
-      return unless claim_broadcast_slot("experiments", EXPERIMENTS_THROTTLE_WINDOW)
+    def broadcast_experiments(force: false)
+      unless force
+        claimed = claim_broadcast_slot("experiments", EXPERIMENTS_THROTTLE_WINDOW)
+        unless claimed
+          schedule_trailing_refresh(:experiments)
+          return
+        end
+      end
 
       experiments = @site.experiments.includes(:section, :variants).order(created_at: :desc)
       Turbo::StreamsChannel.broadcast_replace_to(
@@ -60,6 +72,14 @@ module Analytics
 
     def throttle_key(kind)
       "dashboard_broadcast:#{kind}:site:#{@site.id}"
+    end
+
+    def schedule_trailing_refresh(kind)
+      schedule_key = "dashboard_broadcast:#{kind}:scheduled:site:#{@site.id}"
+      window = kind.to_s == "experiments" ? EXPERIMENTS_THROTTLE_WINDOW : SUMMARY_THROTTLE_WINDOW
+      return unless Rails.cache.write(schedule_key, true, expires_in: window, unless_exist: true)
+
+      DashboardRefreshJob.set(wait: window).perform_later(@site.id, kind.to_s)
     end
   end
 end

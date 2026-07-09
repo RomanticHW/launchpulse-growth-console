@@ -408,3 +408,16 @@ RSpec.describe "Domain integrity" do
     expect(invalid.errors[:field_type]).to be_present
   end
 end
+
+RSpec.describe "Experiment conversion scopes" do
+  it "open_for_conversion includes paused experiments without winner" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    paused = create(:experiment, site:, section:, status: "paused", winner_applied_at: nil)
+    applied = create(:experiment, site:, section: create(:section, page:, position: 1), status: "completed", winner_applied_at: Time.current)
+
+    expect(site.experiments.open_for_conversion).to include(paused)
+    expect(site.experiments.open_for_conversion).not_to include(applied)
+  end
+end

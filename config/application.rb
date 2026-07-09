@@ -38,5 +38,12 @@ module LaunchPulse
 
     # Don't generate system test files.
     config.generators.system_tests = nil
+
+    # Console session cookie: SameSite=Lax; Secure is enforced in production via force_ssl.
+    config.session_store :cookie_store,
+      key: "_launch_pulse_session",
+      same_site: :lax,
+      secure: Rails.env.production?
   end
 end
+

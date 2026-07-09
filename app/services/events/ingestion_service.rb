@@ -169,10 +169,19 @@ module Events
       # section_uid 是公开页面和外部接口之间的业务锚点，先确认它仍在正式页面里，再做分流。
       raise InvalidPayload, "section is not published" unless Sites::PublishedRuntime.new(site).visible_section_uid?(section_uid)
 
-      experiment = site.experiments.active.joins(:section).find_by(sections: { uid: section_uid })
+      experiment = site.experiments.accepting_new_assignments.joins(:section).find_by(sections: { uid: section_uid })
+      if experiment
+        assignment = Experiments::AssignmentService.new(experiment).assign(@params[:visitor_id])
+        return { experiment:, variant: assignment.variant, variant_key: assignment.variant.key, assignment: }
+      end
+
+      # Paused/completed: reuse historical assignment only; never mint a new one.
+      experiment = site.experiments.open_for_conversion.joins(:section).find_by(sections: { uid: section_uid })
       return nil unless experiment
 
-      assignment = Experiments::AssignmentService.new(experiment).assign(@params[:visitor_id])
+      assignment = experiment.assignments.find_by(visitor_id: @params[:visitor_id])
+      return nil unless assignment
+
       { experiment:, variant: assignment.variant, variant_key: assignment.variant.key, assignment: }
     end
 

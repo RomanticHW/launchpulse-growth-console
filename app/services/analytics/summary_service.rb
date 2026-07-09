@@ -2,8 +2,9 @@ module Analytics
   class SummaryService
     def initialize(site, since: 14.days.ago)
       @site = site
-      @since = since
-      @events = site.events.where(occurred_at: since..)
+      # Align raw event windows with daily rollup buckets (calendar days in app TZ).
+      @since = since.in_time_zone.beginning_of_day
+      @events = site.events.where(occurred_at: @since..)
     end
 
     def call

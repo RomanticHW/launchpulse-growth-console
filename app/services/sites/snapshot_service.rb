@@ -3,31 +3,28 @@ require "digest"
 module Sites
   class SnapshotService
     class ChecksumMismatch < StandardError; end
+    class UnresolvedExperiments < StandardError; end
 
     def initialize(site)
       @site = site
     end
 
     def publish!(user:, note: nil)
-      version = @site.published_snapshots.maximum(:version).to_i + 1
-      payload = payload_for(@site)
-      ActiveRecord::Base.transaction do
-        # 发布是草稿进入公开运行时的唯一入口；公开页面不会直接读取正在编辑的 sections。
-        @site.update!(status: "published")
-        @site.published_snapshots.create!(
-          version:,
-          published_by: user,
-          note:,
-          payload:,
-          checksum: checksum_for(payload),
-          published_at: Time.current
-        )
+      @site.with_lock do
+        publish_under_lock!(user:, note:)
       end
     end
 
     def rollback!(snapshot, user:)
       verify_checksum!(snapshot)
-      ActiveRecord::Base.transaction do
+
+      @site.with_lock do
+        # Re-check under the site lock so a concurrent launch cannot slip in between
+        # the unresolved guard and the structural restore / re-publish.
+        if unresolved_experiments?
+          raise UnresolvedExperiments, "请先结束并应用实验胜出版本，再回滚发布。"
+        end
+
         retained_paths = snapshot.payload.fetch("pages", []).map { |page_payload| page_payload.fetch("path") }
         @site.pages.where.not(path: retained_paths).destroy_all
 
@@ -53,7 +50,7 @@ module Sites
           page.sections.where.not(uid: retained_uids).destroy_all
         end
 
-        publish!(user:, note: "回滚到版本 #{snapshot.version}")
+        publish_under_lock!(user:, note: "回滚到版本 #{snapshot.version}")
       end
     end
 
@@ -98,6 +95,26 @@ module Sites
     end
 
     private
+
+    def publish_under_lock!(user:, note: nil)
+      version = @site.published_snapshots.maximum(:version).to_i + 1
+      payload = payload_for(@site)
+      # 发布是草稿进入公开运行时的唯一入口；公开页面不会直接读取正在编辑的 sections。
+      @site.update!(status: "published")
+      @site.published_snapshots.create!(
+        version:,
+        published_by: user,
+        note:,
+        payload:,
+        checksum: checksum_for(payload),
+        published_at: Time.current
+      )
+    end
+
+    def unresolved_experiments?
+      @site.experiments.where(status: %w[active paused]).exists? ||
+        @site.experiments.where(status: "completed", winner_applied_at: nil).exists?
+    end
 
     def checksum_for(payload)
       # 快照校验保护的是内容，不应该依赖 Ruby 或 PostgreSQL 保留 Hash key 顺序。

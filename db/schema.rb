@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_07_123000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_09_093000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -136,6 +136,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_07_123000) do
     t.bigint "variant_id"
     t.string "variant_key"
     t.string "visitor_id", null: false
+    t.index ["aggregated_at"], name: "index_events_unaggregated", where: "(aggregated_at IS NULL)"
     t.index ["experiment_id"], name: "index_events_on_experiment_id"
     t.index ["page_id"], name: "index_events_on_page_id"
     t.index ["site_id", "device", "occurred_at"], name: "index_events_on_site_id_and_device_and_occurred_at"
@@ -340,8 +341,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_07_123000) do
     t.string "slug", null: false
     t.string "status", default: "draft", null: false
     t.datetime "updated_at", null: false
-    t.index ["account_id", "slug"], name: "index_sites_on_account_id_and_slug", unique: true
     t.index ["account_id"], name: "index_sites_on_account_id"
+    t.index ["slug"], name: "index_sites_on_slug", unique: true
   end
 
   create_table "users", force: :cascade do |t|

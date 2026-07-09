@@ -5,7 +5,7 @@ User.destroy_all
 
 account = Account.create!(name: "LaunchPulse 演示账号", plan: "demo")
 user = User.create!(name: "演示负责人", email: "demo@launchpulse.test", password: "password")
-Membership.create!(account:, user:, role: "owner")
+Membership.create!(account:, user:, role: Membership::OWNER)
 
 def build_site(account:, user:, name:, slug:, industry:, score:, sections:, products: [])
   site = account.sites.create!(name:, slug:, industry:, growth_score: score, status: "published")

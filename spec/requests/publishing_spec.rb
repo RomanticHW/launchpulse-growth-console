@@ -106,4 +106,43 @@ RSpec.describe "Publishing" do
     expect(response).to redirect_to(site_path(site))
     expect(flash[:alert]).to match(/checksum/i)
   end
+
+  it "redirects with an alert when rollback is blocked by an unresolved experiment" do
+    account = create(:account)
+    user = create(:user, password: "password")
+    create(:membership, account:, user:, role: Membership::OWNER)
+    site = create(:site, account:)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    snapshot = Sites::SnapshotService.new(site).publish!(user:, note: "Before")
+    create(:experiment, site:, section:, status: "active")
+
+    sign_in(user)
+    post rollback_site_publishing_path(site, snapshot_id: snapshot.id)
+
+    expect(response).to redirect_to(site_path(site))
+    expect(flash[:alert]).to match(/实验/)
+    expect(site.published_snapshots.maximum(:version)).to eq(snapshot.version)
+  end
+
+  it "allows viewers to open the publish diff" do
+    account = create(:account)
+    user = create(:user, password: "password")
+    create(:membership, account:, user:, role: Membership::VIEWER)
+    site = create(:site, account:)
+    page = create(:page, site:)
+    section = create(:section, page:, name: "Hero", props: { "headline" => "Published" })
+    snapshot = Sites::SnapshotService.new(site).publish!(user: nil, note: "Before")
+    section.update!(props: { "headline" => "Draft change" })
+
+    sign_in(user)
+    get diff_site_publishing_path(site, snapshot_id: snapshot.id)
+
+    expect(response).to have_http_status(:ok)
+    expect(response).not_to redirect_to(root_path)
+    expect(response.body).to include("Hero")
+    expect(response.body).to include("headline")
+  end
 end
+
+

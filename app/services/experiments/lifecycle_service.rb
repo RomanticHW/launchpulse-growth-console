@@ -38,21 +38,25 @@ module Experiments
     end
 
     def pause!(experiment:, user:, account:)
-      require_status!(experiment, "active", action: "pause")
-      transition!(experiment:, status: "paused", user:, account:, action: "experiment_paused")
+      experiment.with_lock do
+        require_status!(experiment, "active", action: "pause")
+        transition!(experiment:, status: "paused", user:, account:, action: "experiment_paused")
+      end
     end
 
     def resume!(experiment:, user:, account:)
-      require_status!(experiment, "paused", action: "resume")
-      transition!(experiment:, status: "active", user:, account:, action: "experiment_resumed", ended_at: nil)
+      experiment.with_lock do
+        require_status!(experiment, "paused", action: "resume")
+        transition!(experiment:, status: "active", user:, account:, action: "experiment_resumed", ended_at: nil)
+      end
     end
 
     def complete!(experiment:, user:, account:)
-      unless %w[active paused].include?(experiment.status)
-        raise InvalidTransition, "只有运行中或已暂停的实验可以完成。"
-      end
+      experiment.with_lock do
+        unless %w[active paused].include?(experiment.status)
+          raise InvalidTransition, "只有运行中或已暂停的实验可以完成。"
+        end
 
-      ActiveRecord::Base.transaction do
         experiment.update!(status: "completed", ended_at: Time.current)
         experiment.recommendation&.update!(status: "tested") if experiment.recommendation&.status == "testing"
         experiment.recommendation&.section_patch&.update!(status: "tested") if experiment.recommendation&.section_patch&.status == "testing"
@@ -62,11 +66,11 @@ module Experiments
 
     def apply_winner!(experiment:, variant:, user:, account:)
       # 胜出版本只改变当前草稿区块，不回写补丁快照；补丁的 before/after 是实验创建时的证据。
-      raise InvalidTransition, "请先完成实验，再应用胜出版本。" unless experiment.status == "completed"
-      raise InvalidTransition, "胜出版本已经应用过。" if experiment.winner_applied_at.present?
-      raise InvalidTransition, "该版本不属于当前实验。" if variant.experiment != experiment
+      experiment.with_lock do
+        raise InvalidTransition, "请先完成实验，再应用胜出版本。" unless experiment.status == "completed"
+        raise InvalidTransition, "胜出版本已经应用过。" if experiment.winner_applied_at.present?
+        raise InvalidTransition, "该版本不属于当前实验。" if variant.experiment_id != experiment.id
 
-      ActiveRecord::Base.transaction do
         experiment.section.update!(props: variant.props)
         experiment.update!(winner_variant: variant, winner_applied_at: Time.current)
         if control_variant?(variant)
