@@ -175,7 +175,7 @@ module Events
       experiment = site.experiments.accepting_new_assignments.joins(:section).find_by(sections: { uid: section_uid })
       if experiment
         assignment = Experiments::AssignmentService.new(experiment).assign(@params[:visitor_id])
-        return { experiment:, variant: assignment.variant, variant_key: assignment.variant.key, assignment: }
+        return { experiment:, variant: assignment.variant, variant_key: assignment.variant.key, assignment: } if assignment
       end
 
       # Paused/completed: reuse historical assignment only; never mint a new one.
@@ -189,19 +189,26 @@ module Events
     end
 
     def assignment_for!(experiment, variant)
-      assignment = experiment.assignments.find_by(visitor_id: @params[:visitor_id])
-      if assignment
-        raise InvalidPayload, "assignment conflicts with variant_key" if assignment.variant_id != variant.id
+      experiment.with_lock do
+        experiment.reload
+        raise InvalidPayload, "experiment is invalid" unless experiment.status == "active"
 
-        return assignment
+        assignment = experiment.assignments.find_by(visitor_id: @params[:visitor_id])
+        if assignment
+          raise InvalidPayload, "assignment conflicts with variant_key" if assignment.variant_id != variant.id
+
+          return assignment
+        end
+
+        begin
+          experiment.assignments.create!(visitor_id: @params[:visitor_id], variant:)
+        rescue ActiveRecord::RecordNotUnique
+          assignment = experiment.assignments.find_by!(visitor_id: @params[:visitor_id])
+          raise InvalidPayload, "assignment conflicts with variant_key" if assignment.variant_id != variant.id
+
+          assignment
+        end
       end
-
-      experiment.assignments.create!(visitor_id: @params[:visitor_id], variant:)
-    rescue ActiveRecord::RecordNotUnique
-      assignment = experiment.assignments.find_by!(visitor_id: @params[:visitor_id])
-      raise InvalidPayload, "assignment conflicts with variant_key" if assignment.variant_id != variant.id
-
-      assignment
     end
 
     def page_for(site)

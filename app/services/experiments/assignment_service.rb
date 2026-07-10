@@ -5,19 +5,26 @@ module Experiments
     end
 
     def assign(visitor_id)
-      existing = @experiment.assignments.find_by(visitor_id:)
-      return existing if existing
+      @experiment.with_lock do
+        @experiment.reload
+        return nil unless @experiment.status == "active"
 
-      variants = @experiment.variants.order(:id).to_a
-      raise ArgumentError, "experiment has no variants" if variants.empty?
+        existing = @experiment.assignments.find_by(visitor_id:)
+        return existing if existing
 
-      variant = weighted_variant_for(variants, visitor_id)
+        variants = @experiment.variants.order(:id).to_a
+        raise ArgumentError, "experiment has no variants" if variants.empty?
 
-      @experiment.assignments.create_or_find_by!(visitor_id:) do |assignment|
-        assignment.variant = variant
+        variant = weighted_variant_for(variants, visitor_id)
+
+        begin
+          @experiment.assignments.create_or_find_by!(visitor_id:) do |assignment|
+            assignment.variant = variant
+          end
+        rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
+          @experiment.assignments.find_by!(visitor_id:)
+        end
       end
-    rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
-      @experiment.assignments.find_by!(visitor_id:)
     end
 
     private

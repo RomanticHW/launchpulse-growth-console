@@ -15,7 +15,8 @@ class TrafficSimulatorJob < ApplicationJob
       device = DEVICES.sample
       occurred_at = rand(10.days.to_i).seconds.ago
       assignments = experiments.each_with_object({}) do |experiment, result|
-        result[experiment.section.uid] = Experiments::AssignmentService.new(experiment).assign(visitor_id)
+        assignment = Experiments::AssignmentService.new(experiment).assign(visitor_id)
+        result[experiment.section.uid] = assignment if assignment
       end
       broadcast_experiment_metrics(site, experiments, index)
       assigned_variants = assignments.values.each_with_object({}) do |assignment, result|

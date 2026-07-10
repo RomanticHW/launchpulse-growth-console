@@ -48,6 +48,26 @@ RSpec.describe TrafficSimulatorJob do
     expect(hidden_experiment.assignments.count).to eq(0)
   end
 
+  it "omits experiments that close before the simulator assignment is created" do
+    site = create(:site)
+    page = create(:page, site:)
+    hero = create(:section, page:, kind: "hero")
+    experiment = create(:experiment, site:, section: hero)
+    create(:variant, experiment:, key: "variant", name: "Variant")
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    allow_any_instance_of(Experiments::AssignmentService).to receive(:assign).and_return(nil)
+    allow_any_instance_of(described_class).to receive(:rand).and_return(0.99)
+
+    expect do
+      described_class.perform_now(site.id, visitors: 1)
+    end.not_to raise_error
+
+    page_view = site.events.find_by!(event_type: "page_view")
+    expect(page_view.metadata.fetch("assigned_variants")).to eq({})
+    expect(page_view.experiment_id).to be_nil
+    expect(experiment.assignments.count).to eq(0)
+  end
+
   it "throttles experiment panel broadcasts during simulations" do
     site = create(:site)
     page = create(:page, site:)

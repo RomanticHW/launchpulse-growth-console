@@ -77,6 +77,8 @@ module Public
         next if visible_section_uids && !visible_section_uids.include?(experiment.section.uid)
 
         assignment = Experiments::AssignmentService.new(experiment).assign(visitor_id)
+        next unless assignment
+
         result[experiment.section.uid] = assignment
         result[experiment.section_id] = assignment
       end
@@ -88,7 +90,8 @@ module Public
 
       experiment = site.experiments.accepting_new_assignments.joins(:section).find_by(sections: { uid: section_uid })
       if experiment
-        return Experiments::AssignmentService.new(experiment).assign(visitor_id)
+        assignment = Experiments::AssignmentService.new(experiment).assign(visitor_id)
+        return assignment if assignment
       end
 
       # Late conversion path: paused/completed unresolved experiments keep historical assignment only.

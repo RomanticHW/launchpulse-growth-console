@@ -81,6 +81,24 @@ RSpec.describe "Public sites" do
     expect(experiment.assignments.count).to eq(1)
   end
 
+  it "renders published props when an active experiment closes before assignment" do
+    site = create(:site, slug: "closed-during-public-assignment", status: "published")
+    page = create(:page, site:)
+    section = create(:section, page:, kind: "hero", props: { "headline" => "Published headline", "subheadline" => "Published body", "cta" => "Start" })
+    experiment = create(:experiment, site:, section:)
+    create(:variant, experiment:, key: "variant", props: section.props.merge("headline" => "Closed variant"))
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    allow_any_instance_of(Experiments::AssignmentService).to receive(:assign).and_return(nil)
+
+    get "/s/closed-during-public-assignment"
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include("Published headline")
+    expect(response.body).not_to include("Closed variant")
+    expect(experiment.assignments.count).to eq(0)
+    expect(site.events.find_by!(event_type: "page_view").metadata.fetch("assigned_variants")).to eq({})
+  end
+
   it "renders variant props by section uid when snapshot section ids are stale" do
     site = create(:site, slug: "uid-variant-demo", status: "published")
     page = create(:page, site:)
@@ -377,6 +395,27 @@ RSpec.describe "Public sites" do
     expect(response).to have_http_status(:accepted)
     expect(site.events.last.experiment).to eq(hero_experiment)
     expect(site.events.last.variant_key).to eq("hero")
+  end
+
+  it "reuses a historical assignment when an active experiment closes during public attribution" do
+    site = create(:site, slug: "closing-section-event-demo", status: "published")
+    page = create(:page, site:)
+    section = create(:section, page:, kind: "hero")
+    experiment = create(:experiment, site:, section:)
+    variant = create(:variant, experiment:, key: "hero", name: "Hero")
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    get "/s/closing-section-event-demo"
+    historical_assignment = experiment.assignments.find_by!(variant:)
+    allow_any_instance_of(Experiments::AssignmentService).to receive(:assign).and_wrap_original do |_original, _visitor_id|
+      Experiment.where(id: experiment.id).update_all(status: "completed", ended_at: Time.current)
+      nil
+    end
+
+    post "/s/closing-section-event-demo/events", params: { event_type: "cta_click", section_uid: section.uid }
+
+    expect(response).to have_http_status(:accepted)
+    expect(site.events.last).to have_attributes(experiment_id: experiment.id, variant_id: variant.id)
+    expect(experiment.assignments.where(visitor_id: historical_assignment.visitor_id).count).to eq(1)
   end
 
   it "records public events without experiment attribution when section uid is missing" do
