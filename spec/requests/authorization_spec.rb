@@ -71,5 +71,3 @@ RSpec.describe "Authorization" do
     expect(site_b.published_snapshots.count).to eq(0)
   end
 end
-
-

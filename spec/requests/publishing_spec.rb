@@ -144,5 +144,3 @@ RSpec.describe "Publishing" do
     expect(response.body).to include("headline")
   end
 end
-
-

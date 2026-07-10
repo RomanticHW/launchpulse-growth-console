@@ -46,4 +46,3 @@ module LaunchPulse
       secure: Rails.env.production?
   end
 end
-

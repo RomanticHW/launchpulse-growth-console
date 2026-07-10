@@ -31,4 +31,3 @@ class PublishingController < ApplicationController
     @site = current_account.sites.find(params[:site_id])
   end
 end
-

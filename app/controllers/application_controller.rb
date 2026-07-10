@@ -50,4 +50,3 @@ class ApplicationController < ActionController::Base
     require_role!(Membership::OWNER)
   end
 end
-

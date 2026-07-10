@@ -8,6 +8,7 @@ cd "$ROOT"
 rm -f "$OUTPUT"
 
 zip -r "$OUTPUT" . \
+  -x ".git" \
   -x ".git/*" \
   -x ".kamal/*" \
   -x "__MACOSX/*" \
@@ -18,6 +19,7 @@ zip -r "$OUTPUT" . \
   -x "storage/*" \
   -x "output/*" \
   -x ".playwright-cli/*" \
+  -x "docs/superpowers/*" \
   -x "vendor/bundle/*" \
   -x "public/assets/*" \
   -x "app/assets/builds/*" \
@@ -38,7 +40,7 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
     blocked = []
     for name in names:
         if (
-            name == ".git/" or name.startswith(".git/") or
+            name == ".git" or name == ".git/" or name.startswith(".git/") or
             name == "__MACOSX/" or name.startswith("__MACOSX/") or
             name.endswith(".DS_Store") or
             name == "tmp/" or name.startswith("tmp/") or
@@ -46,6 +48,7 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
             name == "storage/" or name.startswith("storage/") or
             name == "output/" or name.startswith("output/") or
             name == ".playwright-cli/" or name.startswith(".playwright-cli/") or
+            name == "docs/superpowers/" or name.startswith("docs/superpowers/") or
             name == "config/master.key" or
             name == "public/assets/" or name.startswith("public/assets/") or
             name == "app/assets/builds/" or name.startswith("app/assets/builds/")

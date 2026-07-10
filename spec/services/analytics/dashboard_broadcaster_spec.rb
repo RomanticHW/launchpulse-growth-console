@@ -97,4 +97,3 @@ RSpec.describe Analytics::DashboardBroadcaster do
     )
   end
 end
-

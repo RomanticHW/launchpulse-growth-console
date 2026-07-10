@@ -220,5 +220,3 @@ RSpec.describe Experiments::LifecycleService do
     expect(experiment.winner_variant_id).to be_in([ control_id, variant_id ])
   end
 end
-
-
