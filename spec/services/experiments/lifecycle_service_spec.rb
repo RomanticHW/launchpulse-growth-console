@@ -59,6 +59,34 @@ RSpec.describe Experiments::LifecycleService do
     end
   end
 
+  it "rejects launch when the caller holds a stale open recommendation" do
+    site, recommendation = recommendation_for(status: "open")
+    Recommendation.find(recommendation.id).update!(status: "dismissed", dismissed_at: Time.current)
+
+    expect do
+      described_class.new.launch_from_recommendation!(site:, recommendation:, user: nil, account: site.account)
+    end.to raise_error(Experiments::LifecycleService::InvalidTransition)
+
+    expect(site.experiments).to be_empty
+    expect(recommendation.reload.status).to eq("dismissed")
+  end
+
+  it "rejects launch when the recommendation section changes before the section lock" do
+    site, recommendation = recommendation_for(status: "open")
+    replacement_section = create(:section, page: recommendation.section.page, position: 1)
+
+    expect_any_instance_of(Section).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      Recommendation.where(id: recommendation.id).update_all(section_id: replacement_section.id)
+      original.call(*args, &block)
+    end
+
+    expect do
+      described_class.new.launch_from_recommendation!(site:, recommendation:, user: nil, account: site.account)
+    end.to raise_error(Experiments::LifecycleService::InvalidTransition, /关联的页面区块已变化/)
+
+    expect(site.experiments).to be_empty
+  end
+
   it "allows applied patch retest only before a winner has been applied" do
     site, recommendation = recommendation_for(status: "applied")
     service = described_class.new
@@ -103,7 +131,7 @@ RSpec.describe Experiments::LifecycleService do
         site_lock_held = false
       end
     end
-    expect(section).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+    expect_any_instance_of(Section).to receive(:with_lock).and_wrap_original do |original, *args, &block|
       expect(site_lock_held).to be(true)
       original.call(*args, &block)
     end

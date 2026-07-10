@@ -5,13 +5,19 @@ module Experiments
     UNRESOLVED_STATUSES = %w[active paused completed].freeze
 
     def launch_from_recommendation!(site:, recommendation:, user:, account:)
-      section = recommendation.section
-      raise InvalidTransition, "这条建议没有关联页面区块。" unless section
-
       experiment = nil
 
       site.with_lock do
+        recommendation.reload
+        section = recommendation.section
+        raise InvalidTransition, "这条建议没有关联页面区块。" unless section
+
         section.with_lock do
+          recommendation.reload
+          if recommendation.section_id != section.id
+            raise InvalidTransition, "这条建议关联的页面区块已变化，请重试。"
+          end
+
           # 实验状态流统一收在 service 里；控制器不直接改状态，避免绕过补丁和胜出版本的业务规则。
           validate_launchable!(recommendation)
           raise InvalidTransition, "这条建议已有未结束的实验。" if unresolved_recommendation_experiment?(site, recommendation)

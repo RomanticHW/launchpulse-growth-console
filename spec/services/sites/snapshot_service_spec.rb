@@ -128,7 +128,7 @@ RSpec.describe Sites::SnapshotService do
     snapshot = described_class.new(site).publish!(user: nil, note: "Version 1")
     service = described_class.new(site)
 
-    [ nil, "" ].each do |blank_checksum|
+    [ nil, "", " ", "\t" ].each do |blank_checksum|
       snapshot.checksum = blank_checksum
 
       expect { service.rollback!(snapshot, user: nil) }.to raise_error(Sites::SnapshotService::ChecksumMismatch)
