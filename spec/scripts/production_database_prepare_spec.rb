@@ -10,6 +10,13 @@ RSpec.describe "production database preparation" do
 
   PREPARE_TIMEOUT = 90
   CONNECTION_QUERY_KEYS = %i[sslmode sslcert sslkey sslrootcert connect_timeout].freeze
+  STARTUP_DATABASE_URL_ERROR_MESSAGE = "Database URL must be a valid PostgreSQL URL with a database path"
+  STARTUP_INVALID_DATABASE_URLS = [
+    "mysql://sentinel_user:sentinel_password@sentinel_host/sentinel_database",
+    "postgresql://sentinel_user:sentinel_password@sentinel_host/sentinel%ZZ",
+    "postgresql://sentinel_user:sentinel_password@[2001:db8::1/sentinel_database",
+    "postgresql://sentinel_user:sentinel_password@sentinel_host/"
+  ].freeze
 
   it "prepares each production database derived from one DATABASE_URL" do
     expect(database_creator?).to be(true), <<~MESSAGE
@@ -44,6 +51,21 @@ RSpec.describe "production database preparation" do
   ensure
     connections&.each { |connection| connection.finish unless connection.finished? }
     databases&.each_value { |database| drop_database(database) }
+  end
+
+  it "rejects invalid database URLs during production boot without exposing their contents" do
+    DatabaseUrlConfig::URL_KEYS.zip(STARTUP_INVALID_DATABASE_URLS).each do |key, invalid_url|
+      stdout, stderr, status = run_rails(
+        production_environment(key => invalid_url),
+        "runner",
+        "puts :booted"
+      )
+      output = [ stdout, stderr ].join("\n")
+
+      expect(status).not_to be_success
+      expect(output).to include(STARTUP_DATABASE_URL_ERROR_MESSAGE)
+      expect(output).not_to include("sentinel_user", "sentinel_password", "sentinel_host")
+    end
   end
 
   private
@@ -112,18 +134,24 @@ RSpec.describe "production database preparation" do
   end
 
   def run_prepare(database_url)
-    env = {
+    run_rails(production_environment("DATABASE_URL" => database_url), "db:prepare")
+  end
+
+  def production_environment(overrides = {})
+    {
       "RAILS_ENV" => "production",
-      "DATABASE_URL" => database_url,
+      "DATABASE_URL" => nil,
       "CACHE_DATABASE_URL" => nil,
       "QUEUE_DATABASE_URL" => nil,
       "CABLE_DATABASE_URL" => nil,
       "SECRET_KEY_BASE" => SecureRandom.hex(64),
       "DISABLE_DATABASE_ENVIRONMENT_CHECK" => "1",
       "RAILS_LOG_LEVEL" => "fatal"
-    }
+    }.merge(overrides)
+  end
 
-    Open3.popen3(env, Rails.root.join("bin/rails").to_s, "db:prepare", chdir: Rails.root.to_s) do |stdin, stdout, stderr, wait_thread|
+  def run_rails(env, *arguments)
+    Open3.popen3(env, Rails.root.join("bin/rails").to_s, *arguments, chdir: Rails.root.to_s) do |stdin, stdout, stderr, wait_thread|
       stdin.close
       stdout_reader = Thread.new { stdout.read }
       stderr_reader = Thread.new { stderr.read }

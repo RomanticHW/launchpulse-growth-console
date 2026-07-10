@@ -17,7 +17,7 @@ RSpec.describe "Events::AggregationDispatcher" do
       result = Events::AggregationDispatcher.call(event)
     end.to have_enqueued_job(AggregateEventJob).with(event.id).once
 
-    expect(result).to be(true)
+    expect(result).to eq(:enqueued)
     expect(event.reload.aggregation_enqueued_at).to be_within(1.second).of(Time.current)
   end
 
@@ -29,14 +29,14 @@ RSpec.describe "Events::AggregationDispatcher" do
       results = 2.times.map { Events::AggregationDispatcher.call(event) }
     end.to have_enqueued_job(AggregateEventJob).with(event.id).once
 
-    expect(results).to eq([ true, false ])
+    expect(results).to eq([ :enqueued, :active_lease ])
   end
 
   it "reclaims an event after its enqueue lease expires" do
     event = create_event(aggregation_enqueued_at: 11.minutes.ago)
 
     expect do
-      expect(Events::AggregationDispatcher.call(event)).to be(true)
+      expect(Events::AggregationDispatcher.call(event)).to eq(:enqueued)
     end.to have_enqueued_job(AggregateEventJob).with(event.id).once
 
     expect(event.reload.aggregation_enqueued_at).to be_within(1.second).of(Time.current)
@@ -45,7 +45,7 @@ RSpec.describe "Events::AggregationDispatcher" do
   it "does nothing after the event has been aggregated" do
     event = create_event(aggregated_at: Time.current, aggregation_enqueued_at: 11.minutes.ago)
 
-    expect(Events::AggregationDispatcher.call(event)).to be(false)
+    expect(Events::AggregationDispatcher.call(event)).to eq(:already_aggregated)
     expect(enqueued_jobs).to be_empty
   end
 
@@ -60,11 +60,11 @@ RSpec.describe "Events::AggregationDispatcher" do
     expect(event.reload.aggregation_enqueued_at).to be_nil
   end
 
-  it "releases its claim and returns false when enqueue is unsuccessful" do
+  it "releases its claim and returns enqueue_failed when enqueue is unsuccessful" do
     event = create_event
     allow(AggregateEventJob).to receive(:perform_later).and_return(false)
 
-    expect(Events::AggregationDispatcher.call(event)).to be(false)
+    expect(Events::AggregationDispatcher.call(event)).to eq(:enqueue_failed)
 
     expect(event.reload.aggregation_enqueued_at).to be_nil
   end

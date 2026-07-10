@@ -1,11 +1,12 @@
 module Events
   class AggregationDispatcher
     LEASE_DURATION = 10.minutes
+    SKIPPED_STATUSES = %i[active_lease already_aggregated not_found].freeze
 
     class << self
       def call(event)
         claimed_at = Time.current
-        return false unless claim(event.id, claimed_at)
+        return skipped_status(event.id) unless claim(event.id, claimed_at)
 
         enqueue(event.id, claimed_at)
       end
@@ -21,10 +22,10 @@ module Events
 
       def enqueue(event_id, claimed_at)
         job = AggregateEventJob.perform_later(event_id)
-        return true if job && job.successfully_enqueued?
+        return :enqueued if job && job.successfully_enqueued?
 
         release(event_id, claimed_at)
-        false
+        :enqueue_failed
       rescue StandardError
         release(event_id, claimed_at)
         raise
@@ -34,6 +35,14 @@ module Events
         Event
           .where(id: event_id, aggregated_at: nil, aggregation_enqueued_at: claimed_at)
           .update_all(aggregation_enqueued_at: nil)
+      end
+
+      def skipped_status(event_id)
+        state = Event.where(id: event_id).pick(:aggregated_at, :aggregation_enqueued_at)
+        return :not_found unless state
+        return :already_aggregated if state.first
+
+        :active_lease
       end
     end
   end

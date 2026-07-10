@@ -138,8 +138,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_110000) do
     t.string "variant_key"
     t.string "visitor_id", null: false
     t.index ["aggregated_at"], name: "index_events_unaggregated", where: "(aggregated_at IS NULL)"
+    t.index ["created_at", "aggregation_enqueued_at", "id"], name: "idx_events_unaggregated_dispatch_recovery", where: "(aggregated_at IS NULL)"
     t.index ["experiment_id"], name: "index_events_on_experiment_id"
-    t.index ["occurred_at", "aggregation_enqueued_at"], name: "idx_events_unaggregated_dispatch_recovery", where: "(aggregated_at IS NULL)"
     t.index ["page_id"], name: "index_events_on_page_id"
     t.index ["site_id", "device", "occurred_at"], name: "index_events_on_site_id_and_device_and_occurred_at"
     t.index ["site_id", "event_type", "occurred_at"], name: "index_events_on_site_id_and_event_type_and_occurred_at"

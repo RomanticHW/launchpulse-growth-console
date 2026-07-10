@@ -47,8 +47,27 @@ RSpec.describe "launch_pulse tasks" do
       task.invoke
     end.to have_enqueued_job(AggregateEventJob).exactly(unaggregated.size + 1).times
 
-    expect(output.string).to include("Claimed 3; enqueued 3 unaggregated events")
+    expect(output.string).to include("Enqueued 3; skipped 1; failed 0 unaggregated events")
     expect(expired.reload.aggregation_enqueued_at).to be_within(1.second).of(Time.current)
+  ensure
+    $stdout = original_stdout
+  end
+
+  it "reports an unsuccessful enqueue as failed" do
+    site = create(:site)
+    event = site.events.create!(
+      event_type: "page_view",
+      visitor_id: "visitor-enqueue-failed",
+      occurred_at: Time.current
+    )
+    allow(Events::AggregationDispatcher).to receive(:call).with(event).and_return(:enqueue_failed)
+    output = StringIO.new
+    original_stdout = $stdout
+    $stdout = output
+
+    expect { task.invoke }.not_to raise_error
+
+    expect(output.string).to include("Enqueued 0; skipped 0; failed 1 unaggregated events")
   ensure
     $stdout = original_stdout
   end

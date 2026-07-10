@@ -1,8 +1,7 @@
 require "rails_helper"
-require "erb"
-require "yaml"
 
 RSpec.describe "production database configuration" do
+  CONFIG_DATABASE_URL_ERROR_MESSAGE = "Database URL must be a valid PostgreSQL URL with a database path"
   DATABASE_URL_KEYS = %w[
     DATABASE_URL
     CACHE_DATABASE_URL
@@ -10,14 +9,20 @@ RSpec.describe "production database configuration" do
     CABLE_DATABASE_URL
     LAUNCH_PULSE_DATABASE_PASSWORD
   ].freeze
+  CONNECTION_URL_KEYS = DATABASE_URL_KEYS.first(4).freeze
+  CONFIG_INVALID_DATABASE_URLS = [
+    "mysql://sentinel_user:sentinel_password@sentinel_host/sentinel_database",
+    "postgresql://sentinel_user:sentinel_password@sentinel_host/sentinel%ZZ",
+    "postgresql://sentinel_user:sentinel_password@[2001:db8::1/sentinel_database",
+    "postgresql://sentinel_user:sentinel_password@sentinel_host/"
+  ].freeze
 
   def production_configurations(env)
     original_env = DATABASE_URL_KEYS.to_h { |key| [ key, ENV[key] ] }
     env.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
     allow(ActiveRecord::ConnectionHandling::DEFAULT_ENV).to receive(:call).and_return("production")
 
-    rendered = ERB.new(Rails.root.join("config/database.yml").read).result
-    raw_config = YAML.safe_load(rendered, aliases: true)
+    raw_config = ActiveSupport::ConfigurationFile.parse(Rails.root.join("config/database.yml"))
     ActiveRecord::DatabaseConfigurations
       .new(raw_config)
       .configs_for(env_name: "production", include_hidden: true)
@@ -96,5 +101,34 @@ RSpec.describe "production database configuration" do
       "cable" => "launch_pulse_production_cable"
     )
     expect(configurations.values).to all(include(username: "launch_pulse", password: "legacy_password"))
+  end
+
+  it "accepts postgres URLs without a host and still derives independent databases" do
+    configurations = production_configurations(
+      "DATABASE_URL" => "postgres:///socket_database?username=socket_user",
+      "CACHE_DATABASE_URL" => nil,
+      "QUEUE_DATABASE_URL" => nil,
+      "CABLE_DATABASE_URL" => nil
+    )
+
+    expect(configurations.transform_values { |configuration| configuration.values_at(:host, :username, :database) }).to eq(
+      "primary" => [ nil, "socket_user", "socket_database" ],
+      "cache" => [ nil, "socket_user", "socket_database_cache" ],
+      "queue" => [ nil, "socket_user", "socket_database_queue" ],
+      "cable" => [ nil, "socket_user", "socket_database_cable" ]
+    )
+  end
+
+  it "rejects every invalid production URL with one sanitized error" do
+    CONNECTION_URL_KEYS.product(CONFIG_INVALID_DATABASE_URLS).each do |key, invalid_url|
+      env = CONNECTION_URL_KEYS.to_h { |url_key| [ url_key, nil ] }.merge(key => invalid_url)
+
+      expect do
+        production_configurations(env)
+      end.to raise_error(ArgumentError) { |error|
+        expect(error.message).to eq(CONFIG_DATABASE_URL_ERROR_MESSAGE)
+        expect(error.message).not_to include("sentinel_user", "sentinel_password", "sentinel_host")
+      }
+    end
   end
 end

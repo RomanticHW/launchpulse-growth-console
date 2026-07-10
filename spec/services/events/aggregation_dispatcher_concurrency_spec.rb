@@ -41,7 +41,7 @@ RSpec.describe "Events::AggregationDispatcher concurrency" do
     Timeout.timeout(10) { threads.each(&:join) }
 
     expect(outcomes.map(&:last).uniq.size).to eq(2)
-    expect(outcomes.map(&:first)).to contain_exactly(true, false)
+    expect(outcomes.map(&:first)).to contain_exactly(:enqueued, :active_lease)
     expect(enqueued_jobs.filter_map { |job| job[:args].first if job[:job] == AggregateEventJob }).to eq([ event.id ])
   ensure
     2.times { release << true } if release
