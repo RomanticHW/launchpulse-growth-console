@@ -84,6 +84,8 @@ metadata 顶层必须是对象，内部可以有数组和嵌套对象。清洗�
 
 Solid Queue 负责后台事件聚合和访客模拟任务。公开页或事件接口创建 `Event` 后，统一 dispatcher 会先领取数据库租约，再入队 `AggregateEventJob`。聚合任务更新 rollup、转化记录和 `aggregated_at`；production 另有每 5 分钟运行的恢复任务，重新领取遗漏或租约过期的未聚合事件。这样请求路径不用同步完成所有统计，也避免普通幂等重放反复制造队列项。
 
+production 只提供一个 `DATABASE_URL` 时，系统会从主库名派生独立的 cache、queue、cable 数据库，避免四套 schema 共用 `schema_migrations` 后跳过初始化。`db:prepare` 需要数据库角色具备 `CREATEDB`，或者部署平台已预先创建四个数据库；专用 URL 覆盖也必须指向可独立迁移的数据库。
+
 ## 22. Solid Cable 在项目里承担什么？
 
 Solid Cable 负责把后台任务完成后的数据变化推到控制台。聚合服务完成后，通过 `Analytics::DashboardBroadcaster` 广播实时事件、汇总指标和实验数据。这里的重点是任务进程和网页进程分开时仍能刷新，而不是只靠前端本地状态模拟。

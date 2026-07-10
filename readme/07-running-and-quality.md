@@ -53,15 +53,17 @@ DEMO_DEBUG=true bin/dev
 |------|------|
 | `RAILS_ENV=production` | 生产模式 |
 | `SECRET_KEY_BASE` | 会话与 message verifier（含 site_token） |
-| `DATABASE_URL` | PostgreSQL 主连接；未提供专用 URL 时，cache / queue / cable 也使用它，单库即可运行 |
-| `CACHE_DATABASE_URL` | 可选，独立覆盖 cache 连接 |
-| `QUEUE_DATABASE_URL` | 可选，独立覆盖 queue 连接 |
-| `CABLE_DATABASE_URL` | 可选，独立覆盖 cable 连接 |
+| `DATABASE_URL` | PostgreSQL 主连接；未提供专用 URL 时，自动派生 `<primary>_cache`、`<primary>_queue`、`<primary>_cable` 三个独立数据库 |
+| `CACHE_DATABASE_URL` | 可选，覆盖 cache 连接；必须指向可独立迁移的数据库 |
+| `QUEUE_DATABASE_URL` | 可选，覆盖 queue 连接；必须指向可独立迁移的数据库 |
+| `CABLE_DATABASE_URL` | 可选，覆盖 cable 连接；必须指向可独立迁移的数据库 |
 | `LAUNCH_PULSE_DATABASE_PASSWORD` | 可选，仅用于未配置 URL 的传统命名数据库部署 |
 | `APP_HOST` | Host 授权白名单（如 `demo.example.com`） |
 | `RAILS_LOG_LEVEL` | 可选，默认 `info` |
 
-只设置 `DATABASE_URL` 时，四个逻辑连接会共用同一个物理 PostgreSQL。设置任一专用 URL 后，对应连接会改用独立数据库。无论采用单库还是拆库，部署阶段都运行 `bin/rails db:prepare`；它会按 `config/database.yml` 和各 schema / migration 路径准备 primary、cache、queue、cable 所需结构。
+只设置 `DATABASE_URL` 时，派生库会继承相同的 host、port、用户、连接参数，只有 database path 添加 `_cache`、`_queue`、`_cable` 后缀。四个连接必须对应四个物理数据库，不能共用一套 `schema_migrations`。部署阶段运行 `bin/rails db:prepare`，它会按 `config/database.yml` 和各 schema / migration 路径分别准备 primary、cache、queue、cable。
+
+如果数据库尚不存在，执行 `db:prepare` 的角色需要 `CREATEDB` 权限；托管 PostgreSQL 不授予该权限时，应由平台或管理员预先创建主库及三个派生库。使用专用 URL 覆盖时，也要预先创建对应数据库或授予创建权限。
 
 ### 进程
 
@@ -82,8 +84,9 @@ DEMO_DEBUG=true bin/dev
 
 1. `SECRET_KEY_BASE` 与 seed/生产 token 不是开发机那份。
 2. `APP_HOST` 已设，且反代正确传 `X-Forwarded-Proto`。
-3. Queue worker 在跑，模拟访客与事件聚合能完成。
-4. 后台可登录，公开 `/s/:slug` 只读已发布快照。
+3. 数据库角色有 `CREATEDB` 权限，或四个物理数据库已预先创建。
+4. Queue worker 在跑，模拟访客与事件聚合能完成。
+5. 后台可登录，公开 `/s/:slug` 只读已发布快照。
 
 外部事件字段与错误码见 [docs/api-events.md](../docs/api-events.md)。
 

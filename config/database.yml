@@ -111,10 +111,19 @@ test:
 # for a full overview on how database connection configuration can be specified.
 #
 <%
+  require "uri"
+
+  derive_database_url = lambda do |database_url, suffix|
+    uri = URI.parse(database_url)
+    raise ArgumentError, "DATABASE_URL must include a database path" if uri.path.blank? || uri.path == "/"
+
+    uri.path = "#{uri.path}_#{suffix}"
+    uri.to_s
+  end
   primary_database_url = ENV["DATABASE_URL"].presence
-  cache_database_url = ENV["CACHE_DATABASE_URL"].presence || primary_database_url
-  queue_database_url = ENV["QUEUE_DATABASE_URL"].presence || primary_database_url
-  cable_database_url = ENV["CABLE_DATABASE_URL"].presence || primary_database_url
+  cache_database_url = ENV["CACHE_DATABASE_URL"].presence || (derive_database_url.call(primary_database_url, "cache") if primary_database_url)
+  queue_database_url = ENV["QUEUE_DATABASE_URL"].presence || (derive_database_url.call(primary_database_url, "queue") if primary_database_url)
+  cable_database_url = ENV["CABLE_DATABASE_URL"].presence || (derive_database_url.call(primary_database_url, "cable") if primary_database_url)
 %>
 production:
   primary: &primary_production

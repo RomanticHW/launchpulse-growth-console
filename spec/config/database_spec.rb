@@ -27,25 +27,41 @@ RSpec.describe "production database configuration" do
     original_env&.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
   end
 
-  it "uses DATABASE_URL for all production connections when dedicated URLs are absent" do
+  it "derives independent production databases from DATABASE_URL when dedicated URLs are absent" do
     configurations = production_configurations(
-      "DATABASE_URL" => "postgresql://shared_user:shared_password@db.example.test:6543/shared_database",
+      "DATABASE_URL" => "postgresql://shared%2Duser:shared%40password@[2001:db8::1]:6543/shared%2Ddatabase?sslmode=require&application_name=launch%20pulse",
       "CACHE_DATABASE_URL" => nil,
       "QUEUE_DATABASE_URL" => nil,
       "CABLE_DATABASE_URL" => nil
     )
 
     expect(configurations.keys).to contain_exactly("primary", "cache", "queue", "cable")
-    configurations.each_value do |configuration|
-      expect(configuration).to include(
-        adapter: "postgresql",
-        host: "db.example.test",
-        port: 6543,
-        username: "shared_user",
-        password: "shared_password",
-        database: "shared_database"
-      )
-    end
+    inherited_connection = configurations.fetch("primary").slice(
+      :adapter,
+      :host,
+      :port,
+      :username,
+      :password,
+      :sslmode,
+      :application_name
+    )
+    expect(configurations.transform_values { |configuration| configuration.slice(*inherited_connection.keys) }.values)
+      .to all(eq(inherited_connection))
+    expect(inherited_connection.except(:password)).to eq(
+      adapter: "postgresql",
+      host: "2001:db8::1",
+      port: 6543,
+      username: "shared-user",
+      sslmode: "require",
+      application_name: "launch pulse"
+    )
+    expect(inherited_connection[:password]).to be_present
+    expect(configurations.transform_values { |configuration| configuration[:database] }).to eq(
+      "primary" => "shared-database",
+      "cache" => "shared-database_cache",
+      "queue" => "shared-database_queue",
+      "cable" => "shared-database_cable"
+    )
   end
 
   it "lets each dedicated URL override the shared DATABASE_URL" do

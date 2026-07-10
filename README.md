@@ -103,7 +103,7 @@ bin/dev
 
 第一行会把依赖安装到项目内的 `vendor/bundle`，避免写入系统或 Homebrew 的 Ruby gem 目录。这个目录会被 `.gitignore` 和打包脚本排除。
 
-生产 Docker 部署只设置 `DATABASE_URL` 也可以运行，primary、cache、queue、cable 四个逻辑连接会共用该 PostgreSQL；如需物理隔离，可再分别设置 `CACHE_DATABASE_URL`、`QUEUE_DATABASE_URL`、`CABLE_DATABASE_URL`。`bin/rails db:prepare` 会准备所有连接所需的 schema，完整变量和进程说明见[运行与质量保障](readme/07-running-and-quality.md#部署要点demo)。
+生产 Docker 部署只设置 `DATABASE_URL` 也可以运行：primary 使用 URL 中的数据库，cache、queue、cable 会在同一 PostgreSQL 服务上分别派生为 `<primary>_cache`、`<primary>_queue`、`<primary>_cable`。也可用 `CACHE_DATABASE_URL`、`QUEUE_DATABASE_URL`、`CABLE_DATABASE_URL` 覆盖为其他独立数据库。`bin/rails db:prepare` 会分别准备四套 migration history；数据库角色需有 `CREATEDB` 权限，或提前创建这四个数据库。完整变量和进程说明见[运行与质量保障](readme/07-running-and-quality.md#部署要点demo)。
 
 登录账号：
 
