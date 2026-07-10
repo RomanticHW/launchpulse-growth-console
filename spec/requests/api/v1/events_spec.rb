@@ -439,6 +439,10 @@ RSpec.describe "Event API" do
     experiment = create(:experiment, site:, section:)
     create(:variant, experiment:, key: "variant", name: "Variant")
     Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    expect_any_instance_of(Experiments::AssignmentService)
+      .to receive(:assign)
+      .with("visitor-section")
+      .and_call_original
 
     post "/api/v1/events", params: {
       site_token: signed_token_for(site),
@@ -530,6 +534,10 @@ RSpec.describe "Event API" do
     experiment = create(:experiment, site:, section:)
     variant = create(:variant, experiment:, key: "recommended", name: "Recommended")
     Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    expect_any_instance_of(Experiments::AssignmentService)
+      .to receive(:assign)
+      .with("visitor-explicit", variant:)
+      .and_call_original
 
     post "/api/v1/events", params: {
       site_token: signed_token_for(site),

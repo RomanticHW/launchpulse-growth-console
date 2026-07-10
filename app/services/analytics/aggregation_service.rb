@@ -124,12 +124,9 @@ module Analytics
       return nil unless experiment.active?
       return nil unless @event.experiment_id == experiment.id && @event.variant
 
-      experiment.assignments.create_or_find_by!(visitor_id: @event.visitor_id) do |record|
-        record.variant = @event.variant
-      end
-    rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
-      # 并发兜底也要走同一套版本匹配检查，不能因为重试路径把转化写到错误 assignment 上。
-      matching_assignment_or_nil(experiment.assignments.find_by!(visitor_id: @event.visitor_id))
+      Experiments::AssignmentService.new(experiment).assign(@event.visitor_id, variant: @event.variant)
+    rescue Experiments::AssignmentService::VariantConflict
+      nil
     end
 
     def matching_assignment_or_nil(assignment)

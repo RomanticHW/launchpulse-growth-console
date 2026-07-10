@@ -1,33 +1,49 @@
 module Experiments
   class AssignmentService
+    VariantConflict = Class.new(StandardError)
+
     def initialize(experiment)
       @experiment = experiment
     end
 
-    def assign(visitor_id)
-      @experiment.with_lock do
-        @experiment.reload
-        return nil unless @experiment.status == "active"
+    def assign(visitor_id, variant: nil)
+      # 默认事务会加入调用方事务，让 site → experiment 锁序覆盖后续 Event/Order/Form 写入直到最终提交。
+      ActiveRecord::Base.transaction do
+        # KEY SHARE 允许不同实验并发分流，同时会和生命周期操作的 site FOR UPDATE 串行。
+        Site.lock("FOR KEY SHARE").find(@experiment.site_id)
 
-        existing = @experiment.assignments.find_by(visitor_id:)
-        return existing if existing
+        @experiment.with_lock do
+          @experiment.reload
+          return nil unless @experiment.status == "active"
 
-        variants = @experiment.variants.order(:id).to_a
-        raise ArgumentError, "experiment has no variants" if variants.empty?
+          existing = @experiment.assignments.find_by(visitor_id:)
+          return matching_assignment(existing, variant) if existing
 
-        variant = weighted_variant_for(variants, visitor_id)
+          variants = @experiment.variants.order(:id).to_a
+          raise ArgumentError, "experiment has no variants" if variants.empty?
 
-        begin
-          @experiment.assignments.create_or_find_by!(visitor_id:) do |assignment|
-            assignment.variant = variant
+          selected_variant = variant || weighted_variant_for(variants, visitor_id)
+
+          begin
+            @experiment.assignments.create_or_find_by!(visitor_id:) do |assignment|
+              assignment.variant = selected_variant
+            end
+          rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
+            matching_assignment(@experiment.assignments.find_by!(visitor_id:), variant)
           end
-        rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
-          @experiment.assignments.find_by!(visitor_id:)
         end
       end
     end
 
     private
+
+    def matching_assignment(assignment, requested_variant)
+      if requested_variant && assignment.variant_id != requested_variant.id
+        raise VariantConflict, "assignment conflicts with requested variant"
+      end
+
+      assignment
+    end
 
     def weighted_variant_for(variants, visitor_id)
       # 分流不是每次随机抽签，而是访客和实验的稳定哈希；同一访客刷新后仍会看到同一版本。

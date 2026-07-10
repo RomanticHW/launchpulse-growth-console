@@ -73,6 +73,10 @@ RSpec.describe "Public sites" do
     create(:variant, experiment:, key: "control", name: "Control", role: "control", props: section.props)
     create(:variant, experiment:, key: "variant", name: "Variant", props: section.props.merge("headline" => "Variant headline"))
     Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    expect_any_instance_of(Experiments::AssignmentService)
+      .to receive(:assign)
+      .with(kind_of(String))
+      .and_call_original
 
     get "/s/public-demo"
 

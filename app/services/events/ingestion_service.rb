@@ -189,26 +189,12 @@ module Events
     end
 
     def assignment_for!(experiment, variant)
-      experiment.with_lock do
-        experiment.reload
-        raise InvalidPayload, "experiment is invalid" unless experiment.status == "active"
+      assignment = Experiments::AssignmentService.new(experiment).assign(@params[:visitor_id], variant:)
+      raise InvalidPayload, "experiment is invalid" unless assignment
 
-        assignment = experiment.assignments.find_by(visitor_id: @params[:visitor_id])
-        if assignment
-          raise InvalidPayload, "assignment conflicts with variant_key" if assignment.variant_id != variant.id
-
-          return assignment
-        end
-
-        begin
-          experiment.assignments.create!(visitor_id: @params[:visitor_id], variant:)
-        rescue ActiveRecord::RecordNotUnique
-          assignment = experiment.assignments.find_by!(visitor_id: @params[:visitor_id])
-          raise InvalidPayload, "assignment conflicts with variant_key" if assignment.variant_id != variant.id
-
-          assignment
-        end
-      end
+      assignment
+    rescue Experiments::AssignmentService::VariantConflict
+      raise InvalidPayload, "assignment conflicts with variant_key"
     end
 
     def page_for(site)

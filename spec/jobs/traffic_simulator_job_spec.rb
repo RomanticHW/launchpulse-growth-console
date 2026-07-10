@@ -21,10 +21,19 @@ RSpec.describe TrafficSimulatorJob do
     create(:variant, experiment: hero_experiment, key: "hero", name: "Hero")
     create(:variant, experiment: contact_experiment, key: "contact", name: "Contact")
     Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    assigned_visitors = []
+    allow_any_instance_of(Experiments::AssignmentService).to receive(:assign).and_wrap_original do |original, visitor_id|
+      assigned_visitors << visitor_id
+      original.call(visitor_id)
+    end
 
     described_class.perform_now(site.id, visitors: 1)
 
     page_view = site.events.find_by!(event_type: "page_view")
+    expect(assigned_visitors).to contain_exactly(
+      a_string_matching(/\Asim-\d+-0\z/),
+      a_string_matching(/\Asim-\d+-0\z/)
+    )
     expect(page_view.experiment_id).to be_nil
     expect(page_view.variant_id).to be_nil
     expect(page_view.variant_key).not_to include(",") if page_view.variant_key.present?

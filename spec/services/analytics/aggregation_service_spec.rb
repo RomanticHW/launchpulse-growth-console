@@ -210,6 +210,10 @@ RSpec.describe Analytics::AggregationService do
       variant_key: variant.key,
       occurred_at: Time.current
     )
+    expect_any_instance_of(Experiments::AssignmentService)
+      .to receive(:assign)
+      .with("visitor-explicit-exposure", variant:)
+      .and_call_original
 
     described_class.new(event).call
 
