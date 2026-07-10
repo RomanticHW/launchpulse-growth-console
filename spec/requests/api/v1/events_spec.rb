@@ -406,6 +406,32 @@ RSpec.describe "Event API" do
     end.to have_enqueued_job(AggregateEventJob).once
   end
 
+  it "retries dispatch on an idempotent replay after the initial enqueue fails" do
+    site = create(:site)
+    token = signed_token_for(site)
+    request_params = {
+      site_token: token,
+      event_type: "page_view",
+      visitor_id: "visitor-enqueue-retry",
+      idempotency_key: "event-enqueue-retry"
+    }
+    allow(AggregateEventJob).to receive(:perform_later).and_raise("queue unavailable")
+
+    expect do
+      post "/api/v1/events", params: request_params
+    end.to raise_error(RuntimeError, "queue unavailable")
+
+    event = site.events.find_by!(idempotency_key: "event-enqueue-retry")
+    expect(event.aggregation_enqueued_at).to be_nil
+    allow(AggregateEventJob).to receive(:perform_later).and_call_original
+    clear_enqueued_jobs
+
+    expect do
+      post "/api/v1/events", params: request_params
+    end.to have_enqueued_job(AggregateEventJob).with(event.id).once
+    expect(response).to have_http_status(:accepted)
+  end
+
   it "attributes events by section uid and creates an assignment" do
     site = create(:site)
     page = create(:page, site:)

@@ -65,7 +65,7 @@ RSpec.describe "Public request idempotency" do
     )
   end
 
-  it "replays a contact submission without duplicating records, events, or jobs" do
+  it "replays a contact submission without duplicating records, events, or active-lease jobs" do
     site, form = published_contact_form(slug: "contact-idempotency-demo")
     request_token = SecureRandom.uuid
     request_params = {
@@ -76,7 +76,7 @@ RSpec.describe "Public request idempotency" do
 
     expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).once
     expect(response).to redirect_to("/s/contact-idempotency-demo?submitted=1")
-    expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).once
+    expect { post path, params: request_params }.not_to have_enqueued_job(AggregateEventJob)
 
     expect(response).to redirect_to("/s/contact-idempotency-demo?submitted=1")
     expect(site.contacts.count).to eq(1)
@@ -290,14 +290,14 @@ RSpec.describe "Public request idempotency" do
     expect(site.events.count).to eq(0)
   end
 
-  it "replays a product checkout without duplicating orders, items, events, or jobs" do
+  it "replays a product checkout without duplicating orders, items, events, or active-lease jobs" do
     site, _product, section = published_product(slug: "product-idempotency-demo")
     request_params = { section_uid: section.uid, request_token: SecureRandom.uuid }
     path = "/s/product-idempotency-demo/products/calm-cream/checkout"
 
     expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).exactly(2).times
     expect(response).to redirect_to("/s/product-idempotency-demo?ordered=1")
-    expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).exactly(2).times
+    expect { post path, params: request_params }.not_to have_enqueued_job(AggregateEventJob)
 
     expect(response).to redirect_to("/s/product-idempotency-demo?ordered=1")
     expect(site.orders.count).to eq(1)
@@ -407,7 +407,7 @@ RSpec.describe "Public request idempotency" do
     post path, params: request_params
     product.update!(name: "Archived Calm Cream", active: false)
 
-    expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).exactly(2).times
+    expect { post path, params: request_params }.not_to have_enqueued_job(AggregateEventJob)
 
     expect(response).to redirect_to("/s/product-inactive-replay-demo?ordered=1")
     expect(site.orders.count).to eq(1)
@@ -443,14 +443,14 @@ RSpec.describe "Public request idempotency" do
     expect(experiment.assignments.count).to eq(0)
   end
 
-  it "replays a pricing checkout without duplicating orders, events, or jobs" do
+  it "replays a pricing checkout without duplicating orders, events, or active-lease jobs" do
     site, section = published_plan(slug: "pricing-idempotency-demo")
     request_params = { section_uid: section.uid, request_token: SecureRandom.uuid }
     path = "/s/pricing-idempotency-demo/plans/cohort/checkout"
 
     expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).exactly(2).times
     expect(response).to redirect_to("/s/pricing-idempotency-demo?ordered=1")
-    expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).exactly(2).times
+    expect { post path, params: request_params }.not_to have_enqueued_job(AggregateEventJob)
 
     expect(response).to redirect_to("/s/pricing-idempotency-demo?ordered=1")
     expect(site.orders.count).to eq(1)

@@ -53,18 +53,22 @@ DEMO_DEBUG=true bin/dev
 |------|------|
 | `RAILS_ENV=production` | 生产模式 |
 | `SECRET_KEY_BASE` | 会话与 message verifier（含 site_token） |
-| `DATABASE_URL` | 主库 PostgreSQL |
+| `DATABASE_URL` | PostgreSQL 主连接；未提供专用 URL 时，cache / queue / cable 也使用它，单库即可运行 |
+| `CACHE_DATABASE_URL` | 可选，独立覆盖 cache 连接 |
+| `QUEUE_DATABASE_URL` | 可选，独立覆盖 queue 连接 |
+| `CABLE_DATABASE_URL` | 可选，独立覆盖 cable 连接 |
+| `LAUNCH_PULSE_DATABASE_PASSWORD` | 可选，仅用于未配置 URL 的传统命名数据库部署 |
 | `APP_HOST` | Host 授权白名单（如 `demo.example.com`） |
 | `RAILS_LOG_LEVEL` | 可选，默认 `info` |
 
-多数据库（cache / queue / cable）按 `config/database.yml` 与 schema 文件准备；`bin/rails db:prepare` 可初始化结构。
+只设置 `DATABASE_URL` 时，四个逻辑连接会共用同一个物理 PostgreSQL。设置任一专用 URL 后，对应连接会改用独立数据库。无论采用单库还是拆库，部署阶段都运行 `bin/rails db:prepare`；它会按 `config/database.yml` 和各 schema / migration 路径准备 primary、cache、queue、cable 所需结构。
 
 ### 进程
 
 | 进程 | 职责 |
 |------|------|
 | Web（Puma） | 公开站 + 后台 + API |
-| Solid Queue worker | `AggregateEventJob`、流量模拟、看板尾部刷新等 |
+| Solid Queue worker | `AggregateEventJob`、未聚合事件周期恢复、流量模拟、看板尾部刷新等 |
 | （可选）同进程跑 queue | 小流量 demo 可用 `SOLID_QUEUE_IN_PUMA` 类配置，视版本与 `config` 而定 |
 
 实时看板依赖 **Solid Cable**；worker 与 web 须能连同一 cable 库，否则聚合完成但前端不刷新。

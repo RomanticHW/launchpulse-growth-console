@@ -18,10 +18,10 @@ module Events
       validate_payload!
       fingerprint = payload_fingerprint
       key = idempotency_key
-      event, created = resolve_event(site, idempotency_key: key, payload_fingerprint: fingerprint)
+      event, = resolve_event(site, idempotency_key: key, payload_fingerprint: fingerprint)
 
       api_key.update!(last_used_at: Time.current)
-      AggregateEventJob.perform_later(event.id) if created && !event.aggregated_at?
+      Events::AggregationDispatcher.call(event) unless event.aggregated_at?
       event
     end
 

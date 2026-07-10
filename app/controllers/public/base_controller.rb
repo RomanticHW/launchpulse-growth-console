@@ -142,7 +142,7 @@ module Public
     end
 
     def enqueue_public_event!(event)
-      AggregateEventJob.perform_later(event.id)
+      Events::AggregationDispatcher.call(event)
     end
 
     def metadata_hash!(metadata)

@@ -110,21 +110,31 @@ test:
 # Read https://guides.rubyonrails.org/configuring.html#configuring-a-database
 # for a full overview on how database connection configuration can be specified.
 #
+<%
+  primary_database_url = ENV["DATABASE_URL"].presence
+  cache_database_url = ENV["CACHE_DATABASE_URL"].presence || primary_database_url
+  queue_database_url = ENV["QUEUE_DATABASE_URL"].presence || primary_database_url
+  cable_database_url = ENV["CABLE_DATABASE_URL"].presence || primary_database_url
+%>
 production:
   primary: &primary_production
     <<: *default
+    url: <%= primary_database_url.to_json %>
     database: launch_pulse_production
     username: launch_pulse
     password: <%= ENV["LAUNCH_PULSE_DATABASE_PASSWORD"] %>
   cache:
     <<: *primary_production
+    url: <%= cache_database_url.to_json %>
     database: launch_pulse_production_cache
     migrations_paths: db/cache_migrate
   queue:
     <<: *primary_production
+    url: <%= queue_database_url.to_json %>
     database: launch_pulse_production_queue
     migrations_paths: db/queue_migrate
   cable:
     <<: *primary_production
+    url: <%= cable_database_url.to_json %>
     database: launch_pulse_production_cable
     migrations_paths: db/cable_migrate

@@ -27,15 +27,28 @@ RSpec.describe "launch_pulse tasks" do
       aggregated_at: Time.current,
       occurred_at: Time.current
     )
+    site.events.create!(
+      event_type: "page_view",
+      visitor_id: "visitor-active-lease",
+      aggregation_enqueued_at: 5.minutes.ago,
+      occurred_at: Time.current
+    )
+    expired = site.events.create!(
+      event_type: "page_view",
+      visitor_id: "visitor-expired-lease",
+      aggregation_enqueued_at: 11.minutes.ago,
+      occurred_at: Time.current
+    )
     output = StringIO.new
     original_stdout = $stdout
     $stdout = output
 
     expect do
       task.invoke
-    end.to have_enqueued_job(AggregateEventJob).exactly(unaggregated.size).times
+    end.to have_enqueued_job(AggregateEventJob).exactly(unaggregated.size + 1).times
 
-    expect(output.string).to include("Enqueued 2 unaggregated events")
+    expect(output.string).to include("Claimed 3; enqueued 3 unaggregated events")
+    expect(expired.reload.aggregation_enqueued_at).to be_within(1.second).of(Time.current)
   ensure
     $stdout = original_stdout
   end

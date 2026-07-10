@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_09_103000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_09_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -118,6 +118,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_103000) do
 
   create_table "events", force: :cascade do |t|
     t.datetime "aggregated_at"
+    t.datetime "aggregation_enqueued_at"
     t.datetime "created_at", null: false
     t.string "device", default: "desktop", null: false
     t.string "event_type", null: false
@@ -138,6 +139,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_103000) do
     t.string "visitor_id", null: false
     t.index ["aggregated_at"], name: "index_events_unaggregated", where: "(aggregated_at IS NULL)"
     t.index ["experiment_id"], name: "index_events_on_experiment_id"
+    t.index ["occurred_at", "aggregation_enqueued_at"], name: "idx_events_unaggregated_dispatch_recovery", where: "(aggregated_at IS NULL)"
     t.index ["page_id"], name: "index_events_on_page_id"
     t.index ["site_id", "device", "occurred_at"], name: "index_events_on_site_id_and_device_and_occurred_at"
     t.index ["site_id", "event_type", "occurred_at"], name: "index_events_on_site_id_and_event_type_and_occurred_at"

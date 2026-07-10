@@ -28,7 +28,7 @@ RSpec.describe "Public request concurrency" do
     expect(site.contacts.count).to eq(1)
     expect(form.form_submissions.count).to eq(1)
     event = site.events.find_by!(event_type: "form_submit")
-    expect(aggregate_job_event_ids).to contain_exactly(event.id, event.id)
+    expect(aggregate_job_event_ids).to contain_exactly(event.id)
   end
 
   it "allows one request and conflicts the other when concurrent payloads share a token" do
@@ -93,8 +93,7 @@ RSpec.describe "Public request concurrency" do
     expect(site.orders.count).to eq(1)
     expect(OrderItem.where(order: site.orders).count).to eq(1)
     expect(site.events.count).to eq(2)
-    expect(aggregate_job_event_ids.tally.values).to all(eq(2))
-    expect(aggregate_job_event_ids.uniq.sort).to eq(site.events.order(:id).pluck(:id).sort)
+    expect(aggregate_job_event_ids.sort).to eq(site.events.order(:id).pluck(:id).sort)
   end
 
   it "allows one checkout and conflicts the other when concurrent product targets share a token" do
