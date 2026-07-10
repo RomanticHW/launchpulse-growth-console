@@ -43,8 +43,10 @@ RSpec.describe "bin/package-demo" do
     end
   end
 
-  def git(repository, *arguments)
-    stdout, stderr, status = Open3.capture3("git", *arguments, chdir: repository.to_s)
+  def git(repository, *arguments, stdin_data: "")
+    stdout, stderr, status = Open3.capture3(
+      "git", *arguments, chdir: repository.to_s, stdin_data:
+    )
     expect(status).to be_success, -> { "Git command failed:\n#{stdout}\n#{stderr}" }
     stdout
   end
@@ -228,6 +230,66 @@ RSpec.describe "bin/package-demo" do
     end
   end
 
+  it "does not follow a parent directory replaced after path validation" do
+    Dir.mktmpdir("package-demo-directory-swap") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :directory)
+      output = Pathname(tmpdir).join("launchpulse-demo.zip")
+      external_secret = "EXTERNAL_DIRECTORY_CONTENT_MUST_NOT_BE_PACKAGED"
+      track(checkout, "safe/payload.txt", "tracked payload")
+      FileUtils.mkdir_p(Pathname(tmpdir).join("outside"))
+      File.binwrite(Pathname(tmpdir).join("outside/payload.txt"), external_secret)
+      script_path = checkout.join("bin/package-demo")
+      script = File.read(script_path)
+      archive_open = %(with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:)
+      expect(script).to include(archive_open)
+      directory_swap = <<~PYTHON
+        validated_file = validate_file
+
+        def validate_file(*arguments):
+            result = validated_file(*arguments)
+            relative = arguments[-2]
+            if relative == "safe/payload.txt" and result:
+                safe_directory = os.path.join(root, "safe")
+                os.rename(safe_directory, safe_directory + "-original")
+                os.symlink(os.path.join(os.path.dirname(root), "outside"), safe_directory)
+            return result
+
+      PYTHON
+      File.write(script_path, script.sub(archive_open, directory_swap + archive_open))
+      File.binwrite(output, "stale package")
+
+      stdout, stderr, status = run_package(checkout, output)
+      message = "#{stdout}\n#{stderr}"
+      leaked = status.success? && zip_content(output, "safe/payload.txt") == external_secret
+
+      expect([ status.success?, leaked ]).to eq([ false, false ])
+      expect(message).to include("safe/payload.txt")
+      expect(message).not_to include(external_secret, checkout.to_s)
+      expect(output).not_to exist
+      expect(Dir.glob(Pathname(tmpdir).join(".package-demo.*").to_s)).to be_empty
+    end
+  end
+
+  it "rejects duplicate paths from an unmerged Git index" do
+    Dir.mktmpdir("package-demo-unmerged") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :directory)
+      output = Pathname(tmpdir).join("launchpulse-demo.zip")
+      track(checkout, "conflict.txt", "working tree content")
+      blobs = %w[base ours theirs].map do |content|
+        git(checkout, "hash-object", "-w", "--stdin", stdin_data: content).strip
+      end
+      index_entries = blobs.each_with_index.map do |blob, index|
+        "100644 #{blob} #{index + 1}\tconflict.txt\n"
+      end.join
+      git(checkout, "update-index", "--force-remove", "--", "conflict.txt")
+      git(checkout, "update-index", "--index-info", stdin_data: index_entries)
+      tracked = git(checkout, "ls-files", "--cached", "--", "conflict.txt").lines(chomp: true)
+      expect(tracked).to eq([ "conflict.txt", "conflict.txt", "conflict.txt" ])
+
+      expect_failed_package(checkout, output, "conflict.txt")
+    end
+  end
+
   it "keeps the existing non-ASCII readme filename restriction" do
     Dir.mktmpdir("package-demo-readme") do |tmpdir|
       checkout = create_checkout(project_root, tmpdir, git_shape: :directory)
@@ -338,6 +400,18 @@ RSpec.describe "bin/package-demo" do
 
       expect(status).not_to be_success
       blocked.each { |path| expect(stderr).to include(path) }
+    end
+  end
+
+  it "rejects duplicate entries from the package manifest" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("duplicate-entry.zip")
+      create_zip(package, "duplicate.txt", "duplicate.txt")
+
+      _stdout, stderr, status = verify_package(project_root, package)
+
+      expect(status).not_to be_success
+      expect(stderr).to include("duplicate.txt")
     end
   end
 
