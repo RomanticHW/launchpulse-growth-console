@@ -64,4 +64,33 @@ RSpec.describe "Rack::Attack throttling" do
 
     expect(throttle.block.call(request)).to be_nil
   end
+
+  it "ignores structured and oversized token discriminators" do
+    throttle = Rack::Attack.throttles.fetch("api_events/token")
+    structured_request = Rack::Attack::Request.new(
+      Rack::MockRequest.env_for(
+        "/api/v1/events",
+        method: "POST",
+        input: "site_token[nested]=x",
+        "CONTENT_TYPE" => "application/x-www-form-urlencoded"
+      )
+    )
+    oversized_request = Rack::Attack::Request.new(
+      Rack::MockRequest.env_for("/api/v1/events", method: "POST", "HTTP_X_SITE_TOKEN" => "x" * (4.kilobytes + 1))
+    )
+
+    expect(throttle.block.call(structured_request)).to be_nil
+    expect(throttle.block.call(oversized_request)).to be_nil
+  end
+
+  it "lets the controller return a normal 4xx for a structured token through the full middleware stack" do
+    post "/api/v1/events",
+      params: {
+        site_token: { nested: "x" },
+        event_type: "page_view",
+        visitor_id: "visitor-structured-token"
+      }
+
+    expect(response).to have_http_status(:unauthorized)
+  end
 end

@@ -3,6 +3,8 @@
 require "digest"
 
 class Rack::Attack
+  TOKEN_DISCRIMINATOR_LIMIT_BYTES = 4.kilobytes
+
   ### Configure Cache ###
   # Uses Rails.cache; Solid Cache in production.
 
@@ -24,7 +26,10 @@ class Rack::Attack
   throttle("api_events/token", limit: 300, period: 1.minute) do |req|
     next unless req.path == "/api/v1/events" && req.post?
 
-    token = req.params["site_token"].presence || req.get_header("HTTP_X_SITE_TOKEN")
+    body_token = req.params["site_token"]
+    token = body_token.presence || req.get_header("HTTP_X_SITE_TOKEN")
+    next unless token.is_a?(String) && token.bytesize <= TOKEN_DISCRIMINATOR_LIMIT_BYTES
+
     Digest::SHA256.hexdigest(token) if token.present?
   end
 

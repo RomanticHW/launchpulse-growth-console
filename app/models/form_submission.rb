@@ -11,4 +11,17 @@ class FormSubmission < ApplicationRecord
     format: { with: REQUEST_TOKEN_FORMAT },
     uniqueness: { scope: :form_id },
     allow_nil: true
+  validates :request_fingerprint,
+    presence: true,
+    format: { with: /\A[0-9a-f]{64}\z/ },
+    if: -> { request_token.present? }
+  validate :request_fingerprint_requires_token
+
+  private
+
+  def request_fingerprint_requires_token
+    return if request_token.present? || request_fingerprint.nil?
+
+    errors.add(:request_fingerprint, "must be nil without a request token")
+  end
 end

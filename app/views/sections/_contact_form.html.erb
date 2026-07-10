@@ -18,6 +18,7 @@
         action: "focusin->public-tracking#send"
       } do |builder| %>
       <%= hidden_field_tag :request_token, SecureRandom.uuid %>
+      <%= hidden_field_tag :section_uid, section.uid %>
       <% form.form_fields.each do |field| %>
         <% key = field.param_key %>
         <div>

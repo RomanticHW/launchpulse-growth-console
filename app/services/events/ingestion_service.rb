@@ -28,7 +28,10 @@ module Events
     private
 
     def authenticate!
-      payload = Rails.application.message_verifier(:site_tracking).verify(@params.fetch(:site_token))
+      token = @params.fetch(:site_token)
+      raise InvalidToken, "invalid site token" unless token.is_a?(String)
+
+      payload = Rails.application.message_verifier(:site_tracking).verify(token)
       payload = payload.with_indifferent_access
       api_key = ApiKey.active.find_by(site_id: payload.fetch(:site_id), token_digest: ApiKey.digest(payload.fetch(:token)))
       raise InvalidToken, "invalid site token" unless api_key

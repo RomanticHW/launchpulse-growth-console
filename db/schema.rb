@@ -192,11 +192,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_103000) do
     t.datetime "created_at", null: false
     t.bigint "form_id", null: false
     t.jsonb "payload", default: {}, null: false
+    t.string "request_fingerprint"
     t.string "request_token"
     t.datetime "updated_at", null: false
     t.index ["contact_id"], name: "index_form_submissions_on_contact_id"
     t.index ["form_id", "request_token"], name: "idx_form_submissions_unique_request_token", unique: true, where: "(request_token IS NOT NULL)"
     t.index ["form_id"], name: "index_form_submissions_on_form_id"
+    t.check_constraint "request_token IS NULL AND request_fingerprint IS NULL OR request_token IS NOT NULL AND request_fingerprint IS NOT NULL", name: "form_submissions_request_identity_pair"
   end
 
   create_table "forms", force: :cascade do |t|
@@ -235,6 +237,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_103000) do
     t.datetime "created_at", null: false
     t.string "email", null: false
     t.string "number", null: false
+    t.string "request_fingerprint"
     t.string "request_token"
     t.bigint "site_id", null: false
     t.string "source"
@@ -243,6 +246,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_103000) do
     t.index ["site_id", "number"], name: "index_orders_on_site_id_and_number", unique: true
     t.index ["site_id", "request_token"], name: "idx_orders_unique_request_token", unique: true, where: "(request_token IS NOT NULL)"
     t.index ["site_id"], name: "index_orders_on_site_id"
+    t.check_constraint "request_token IS NULL AND request_fingerprint IS NULL OR request_token IS NOT NULL AND request_fingerprint IS NOT NULL", name: "orders_request_identity_pair"
   end
 
   create_table "pages", force: :cascade do |t|

@@ -2,6 +2,7 @@ module Public
   class BaseController < ActionController::Base
     HiddenSectionError = Class.new(StandardError)
     InvalidRequestToken = Class.new(StandardError)
+    RequestFingerprintMismatch = Class.new(StandardError)
     REQUEST_TOKEN_FORMAT = /\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/
     allow_browser versions: :modern
 
@@ -61,6 +62,12 @@ module Public
       return false unless result
 
       result.error_field(PG::Result::PG_DIAG_CONSTRAINT_NAME) == expected_constraint_name
+    end
+
+    def ensure_matching_request_fingerprint!(record, request_fingerprint)
+      return record if record.request_fingerprint == request_fingerprint
+
+      raise RequestFingerprintMismatch, "请求标识已用于不同内容"
     end
 
     def assignment_map(site, visible_section_uids: nil)

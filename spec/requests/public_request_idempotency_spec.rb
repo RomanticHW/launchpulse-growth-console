@@ -51,6 +51,20 @@ RSpec.describe "Public request idempotency" do
     error.cause.result.error_field(PG::Result::PG_DIAG_CONSTRAINT_NAME)
   end
 
+  def form_request_fingerprint(form:, section_uid:, payload:)
+    PublicRequests::Fingerprint.call(
+      operation: "form_submission",
+      attributes: { form_id: form.id, section_uid:, payload: }
+    )
+  end
+
+  def order_request_fingerprint(operation:, target_key:, section_uid:, email:)
+    PublicRequests::Fingerprint.call(
+      operation:,
+      attributes: { target_key:, section_uid:, email: }
+    )
+  end
+
   it "replays a contact submission without duplicating records, events, or jobs" do
     site, form = published_contact_form(slug: "contact-idempotency-demo")
     request_token = SecureRandom.uuid
@@ -62,10 +76,61 @@ RSpec.describe "Public request idempotency" do
 
     expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).once
     expect(response).to redirect_to("/s/contact-idempotency-demo?submitted=1")
-    expect { post path, params: request_params }.not_to have_enqueued_job(AggregateEventJob)
+    expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).once
 
     expect(response).to redirect_to("/s/contact-idempotency-demo?submitted=1")
     expect(site.contacts.count).to eq(1)
+    expect(form.form_submissions.count).to eq(1)
+    expect(site.events.where(event_type: "form_submit").count).to eq(1)
+  end
+
+  it "returns conflict when a contact token is reused with a different business payload" do
+    site, form, section = published_contact_form(slug: "contact-fingerprint-mismatch-demo")
+    request_token = SecureRandom.uuid
+    path = "/s/contact-fingerprint-mismatch-demo/forms/#{form.id}/submissions"
+
+    post path, params: {
+      request_token:,
+      section_uid: section.uid,
+      form_submission: { email: "first@example.test" }
+    }
+    counts = [ site.contacts.count, form.form_submissions.count, site.events.count ]
+
+    expect do
+      post path, params: {
+        request_token:,
+        section_uid: section.uid,
+        form_submission: { email: "second@example.test" }
+      }
+    end.not_to have_enqueued_job(AggregateEventJob)
+
+    expect(response).to have_http_status(:conflict)
+    expect([ site.contacts.count, form.form_submissions.count, site.events.count ]).to eq(counts)
+  end
+
+  it "re-enqueues the pending form event after the initial enqueue fails" do
+    site, form, section = published_contact_form(slug: "contact-enqueue-recovery-demo")
+    request_token = SecureRandom.uuid
+    request_params = {
+      request_token:,
+      section_uid: section.uid,
+      form_submission: { email: "lead@example.test" }
+    }
+    path = "/s/contact-enqueue-recovery-demo/forms/#{form.id}/submissions"
+    allow(AggregateEventJob).to receive(:perform_later).and_raise("queue unavailable")
+
+    expect { post path, params: request_params }.to raise_error(RuntimeError, "queue unavailable")
+
+    submission = form.form_submissions.find_by!(request_token:)
+    event = site.events.find_by!(event_type: "form_submit")
+    expect(event.metadata["form_submission_id"]).to eq(submission.id)
+    expect(event.aggregated_at).to be_nil
+    allow(AggregateEventJob).to receive(:perform_later).and_call_original
+    clear_enqueued_jobs
+
+    expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).with(event.id).once
+
+    expect(response).to redirect_to("/s/contact-enqueue-recovery-demo?submitted=1")
     expect(form.form_submissions.count).to eq(1)
     expect(site.events.where(event_type: "form_submit").count).to eq(1)
   end
@@ -115,10 +180,19 @@ RSpec.describe "Public request idempotency" do
     existing_submission = form.form_submissions.create!(
       contact:,
       payload: { "email" => contact.email },
-      request_token:
+      request_token:,
+      request_fingerprint: form_request_fingerprint(
+        form:,
+        section_uid: form.section.uid,
+        payload: { "email" => contact.email }
+      )
     )
     request_token_error = capture_record_not_unique do
-      duplicate = form.form_submissions.build(payload: { "email" => contact.email }, request_token:)
+      duplicate = form.form_submissions.build(
+        payload: { "email" => contact.email },
+        request_token:,
+        request_fingerprint: existing_submission.request_fingerprint
+      )
       duplicate.save!(validate: false)
     end
     expect(postgres_constraint_name(request_token_error)).to eq("idx_form_submissions_unique_request_token")
@@ -141,6 +215,44 @@ RSpec.describe "Public request idempotency" do
     expect(site.events.count).to eq(0)
   end
 
+  it "recovers a form request token validation race only when the fingerprint matches" do
+    site, form = published_contact_form(slug: "contact-validation-race-demo")
+    request_token = SecureRandom.uuid
+    contact = site.contacts.create!(email: "lead@example.test", source: "public_site")
+    request_fingerprint = form_request_fingerprint(
+      form:,
+      section_uid: form.section.uid,
+      payload: { "email" => contact.email }
+    )
+    existing_submission = form.form_submissions.create!(
+      contact:,
+      payload: { "email" => contact.email },
+      request_token:,
+      request_fingerprint:
+    )
+    duplicate = form.form_submissions.build(
+      payload: { "email" => contact.email },
+      request_token:,
+      request_fingerprint:
+    )
+    duplicate.valid?
+    validation_error = ActiveRecord::RecordInvalid.new(duplicate)
+    allow_any_instance_of(Public::FormSubmissionsController).to receive(:find_site).and_return(site)
+    allow(site.forms).to receive(:find).and_return(form)
+    allow(form.form_submissions).to receive(:create!).and_raise(validation_error)
+    allow_any_instance_of(Public::FormSubmissionsController)
+      .to receive(:find_submission_by_request_token)
+      .and_return(nil, existing_submission)
+
+    post "/s/contact-validation-race-demo/forms/#{form.id}/submissions", params: {
+      request_token:,
+      form_submission: { email: contact.email }
+    }
+
+    expect(response).to redirect_to("/s/contact-validation-race-demo?submitted=1")
+    expect(form.form_submissions.count).to eq(1)
+  end
+
   it "does not swallow a contact email constraint violation when the request token already exists" do
     site, form = published_contact_form(slug: "contact-unrelated-race-demo")
     request_token = SecureRandom.uuid
@@ -148,7 +260,12 @@ RSpec.describe "Public request idempotency" do
     existing_submission = form.form_submissions.create!(
       contact:,
       payload: { "email" => contact.email },
-      request_token:
+      request_token:,
+      request_fingerprint: form_request_fingerprint(
+        form:,
+        section_uid: form.section.uid,
+        payload: { "email" => contact.email }
+      )
     )
     contact_error = capture_record_not_unique do
       duplicate = site.contacts.build(email: contact.email, source: "public_site")
@@ -157,7 +274,7 @@ RSpec.describe "Public request idempotency" do
     expect(postgres_constraint_name(contact_error)).to eq("index_contacts_on_site_id_and_email")
     allow_any_instance_of(Public::FormSubmissionsController).to receive(:find_site).and_return(site)
     allow(site.forms).to receive(:find).and_return(form)
-    allow(site.contacts).to receive(:find_or_create_by!).and_raise(contact_error)
+    allow(site.contacts).to receive(:create_or_find_by!).and_raise(contact_error)
     allow_any_instance_of(Public::FormSubmissionsController)
       .to receive(:find_submission_by_request_token)
       .and_return(nil, existing_submission)
@@ -180,13 +297,121 @@ RSpec.describe "Public request idempotency" do
 
     expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).exactly(2).times
     expect(response).to redirect_to("/s/product-idempotency-demo?ordered=1")
-    expect { post path, params: request_params }.not_to have_enqueued_job(AggregateEventJob)
+    expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).exactly(2).times
 
     expect(response).to redirect_to("/s/product-idempotency-demo?ordered=1")
     expect(site.orders.count).to eq(1)
     expect(site.orders.first.order_items.count).to eq(1)
     expect(site.events.where(event_type: "checkout_click").count).to eq(1)
     expect(site.events.where(event_type: "order_created").count).to eq(1)
+  end
+
+  it "returns conflict when a product token is reused for another product" do
+    site, _product, section = published_product(slug: "product-fingerprint-mismatch-demo")
+    section_record = Section.find_by!(uid: section.uid)
+    section_record.update!(props: {
+      "products" => [
+        { "name" => "Calm Cream", "product_key" => "calm-cream", "price" => "$28" },
+        { "name" => "Night Cream", "product_key" => "night-cream", "price" => "$32" }
+      ]
+    })
+    site.products.create!(name: "Night Cream", key: "night-cream", description: "Demo", price: 32)
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Publish second product")
+    request_token = SecureRandom.uuid
+
+    post "/s/product-fingerprint-mismatch-demo/products/calm-cream/checkout", params: {
+      section_uid: section.uid,
+      request_token:
+    }
+    counts = [ site.orders.count, OrderItem.where(order: site.orders).count, site.events.count ]
+
+    expect do
+      post "/s/product-fingerprint-mismatch-demo/products/night-cream/checkout", params: {
+        section_uid: section.uid,
+        request_token:
+      }
+    end.not_to have_enqueued_job(AggregateEventJob)
+
+    expect(response).to have_http_status(:conflict)
+    expect([ site.orders.count, OrderItem.where(order: site.orders).count, site.events.count ]).to eq(counts)
+  end
+
+  it "re-enqueues all pending checkout events after the initial enqueue fails" do
+    site, _product, section = published_product(slug: "product-enqueue-recovery-demo")
+    request_token = SecureRandom.uuid
+    request_params = { section_uid: section.uid, request_token: }
+    path = "/s/product-enqueue-recovery-demo/products/calm-cream/checkout"
+    allow(AggregateEventJob).to receive(:perform_later).and_raise("queue unavailable")
+
+    expect { post path, params: request_params }.to raise_error(RuntimeError, "queue unavailable")
+
+    order = site.orders.find_by!(request_token:)
+    events = site.events.where(aggregated_at: nil).order(:id)
+    expect(events.count).to eq(2)
+    expect(events.pluck(Arel.sql("metadata ->> 'order_id'")).uniq).to eq([ order.id.to_s ])
+    allow(AggregateEventJob).to receive(:perform_later).and_call_original
+    clear_enqueued_jobs
+
+    expect { post path, params: request_params }
+      .to have_enqueued_job(AggregateEventJob).exactly(2).times
+
+    expect(response).to redirect_to("/s/product-enqueue-recovery-demo?ordered=1")
+    expect(site.orders.count).to eq(1)
+    expect(site.events.count).to eq(2)
+  end
+
+  it "returns conflict when a product token is reused for a pricing plan" do
+    site = create(:site, slug: "cross-operation-mismatch-demo", status: "published")
+    page = create(:page, site:)
+    product_section = create(
+      :section,
+      page:,
+      kind: "product_grid",
+      position: 0,
+      props: { "products" => [ { "name" => "Calm Cream", "product_key" => "calm-cream", "price" => "$28" } ] }
+    )
+    plan_section = create(
+      :section,
+      page:,
+      kind: "pricing",
+      position: 1,
+      props: { "plans" => [ { "name" => "Cohort", "plan_key" => "cohort", "price" => "$399" } ] }
+    )
+    site.products.create!(name: "Calm Cream", key: "calm-cream", description: "Demo", price: 28)
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    request_token = SecureRandom.uuid
+
+    post "/s/cross-operation-mismatch-demo/products/calm-cream/checkout", params: {
+      section_uid: product_section.uid,
+      request_token:
+    }
+    counts = [ site.orders.count, site.events.count ]
+
+    expect do
+      post "/s/cross-operation-mismatch-demo/plans/cohort/checkout", params: {
+        section_uid: plan_section.uid,
+        request_token:
+      }
+    end.not_to have_enqueued_job(AggregateEventJob)
+
+    expect(response).to have_http_status(:conflict)
+    expect([ site.orders.count, site.events.count ]).to eq(counts)
+  end
+
+  it "replays a product checkout after the product is renamed and deactivated" do
+    site, product, section = published_product(slug: "product-inactive-replay-demo")
+    request_token = SecureRandom.uuid
+    path = "/s/product-inactive-replay-demo/products/calm-cream/checkout"
+    request_params = { section_uid: section.uid, request_token: }
+
+    post path, params: request_params
+    product.update!(name: "Archived Calm Cream", active: false)
+
+    expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).exactly(2).times
+
+    expect(response).to redirect_to("/s/product-inactive-replay-demo?ordered=1")
+    expect(site.orders.count).to eq(1)
+    expect(site.events.count).to eq(2)
   end
 
   it "creates separate product orders for different request tokens" do
@@ -225,7 +450,7 @@ RSpec.describe "Public request idempotency" do
 
     expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).exactly(2).times
     expect(response).to redirect_to("/s/pricing-idempotency-demo?ordered=1")
-    expect { post path, params: request_params }.not_to have_enqueued_job(AggregateEventJob)
+    expect { post path, params: request_params }.to have_enqueued_job(AggregateEventJob).exactly(2).times
 
     expect(response).to redirect_to("/s/pricing-idempotency-demo?ordered=1")
     expect(site.orders.count).to eq(1)
@@ -254,7 +479,13 @@ RSpec.describe "Public request idempotency" do
       email: "buyer@example.test",
       total: 28,
       source: "public_checkout",
-      request_token:
+      request_token:,
+      request_fingerprint: order_request_fingerprint(
+        operation: "product_checkout",
+        target_key: "calm-cream",
+        section_uid: section.uid,
+        email: "shopper@example.test"
+      )
     )
     request_token_error = capture_record_not_unique do
       duplicate = site.orders.build(
@@ -262,7 +493,8 @@ RSpec.describe "Public request idempotency" do
         email: "other@example.test",
         total: 28,
         source: "public_checkout",
-        request_token:
+        request_token:,
+        request_fingerprint: existing_order.request_fingerprint
       )
       duplicate.save!(validate: false)
     end
@@ -286,6 +518,46 @@ RSpec.describe "Public request idempotency" do
     expect(site.events.count).to eq(0)
   end
 
+  it "returns conflict when an order token validation race resolves to another fingerprint" do
+    site, _product, section = published_product(slug: "product-validation-mismatch-demo")
+    request_token = SecureRandom.uuid
+    existing_order = site.orders.create!(
+      number: "ORD-RACE",
+      email: "shopper@example.test",
+      total: 28,
+      source: "public_checkout",
+      request_token:,
+      request_fingerprint: Digest::SHA256.hexdigest("different-request")
+    )
+    duplicate = site.orders.build(
+      number: "ORD-OTHER",
+      email: "shopper@example.test",
+      total: 28,
+      source: "public_checkout",
+      request_token:,
+      request_fingerprint: existing_order.request_fingerprint
+    )
+    duplicate.valid?
+    validation_error = ActiveRecord::RecordInvalid.new(duplicate)
+    allow_any_instance_of(Public::CheckoutsController)
+      .to receive(:find_order_by_request_token)
+      .and_return(nil, existing_order)
+    allow_any_instance_of(Public::CheckoutsController)
+      .to receive(:create_product_order!)
+      .and_raise(validation_error)
+
+    expect do
+      post "/s/product-validation-mismatch-demo/products/calm-cream/checkout", params: {
+        section_uid: section.uid,
+        request_token:
+      }
+    end.not_to have_enqueued_job(AggregateEventJob)
+
+    expect(response).to have_http_status(:conflict)
+    expect(site.orders.count).to eq(1)
+    expect(site.events.count).to eq(0)
+  end
+
   it "does not swallow an order number constraint violation when the request token already exists" do
     site, _product, section = published_product(slug: "product-unrelated-race-demo")
     request_token = SecureRandom.uuid
@@ -294,7 +566,13 @@ RSpec.describe "Public request idempotency" do
       email: "buyer@example.test",
       total: 28,
       source: "public_checkout",
-      request_token:
+      request_token:,
+      request_fingerprint: order_request_fingerprint(
+        operation: "product_checkout",
+        target_key: "calm-cream",
+        section_uid: section.uid,
+        email: "shopper@example.test"
+      )
     )
     order_number_error = capture_record_not_unique do
       duplicate = site.orders.build(
@@ -302,7 +580,8 @@ RSpec.describe "Public request idempotency" do
         email: "other@example.test",
         total: 28,
         source: "public_checkout",
-        request_token: SecureRandom.uuid
+        request_token: SecureRandom.uuid,
+        request_fingerprint: Digest::SHA256.hexdigest("other-order")
       )
       duplicate.save!(validate: false)
     end
@@ -333,7 +612,13 @@ RSpec.describe "Public request idempotency" do
       email: "buyer@example.test",
       total: 28,
       source: "public_checkout",
-      request_token:
+      request_token:,
+      request_fingerprint: order_request_fingerprint(
+        operation: "product_checkout",
+        target_key: "calm-cream",
+        section_uid: section.uid,
+        email: "shopper@example.test"
+      )
     )
     unknown_error = ActiveRecord::RecordNotUnique.new("constraint unavailable")
     allow_any_instance_of(Public::CheckoutsController)
@@ -386,5 +671,6 @@ RSpec.describe "Public request idempotency" do
     expect(token_inputs.map { |input| input["value"] }.uniq.size).to eq(3)
     contact_form = document.at_css("form[action='/s/request-token-view-demo/forms/#{form.id}/submissions']")
     expect(contact_form.at_css('input[name="form_submission[request_token]"]')).to be_nil
+    expect(contact_form.at_css('input[name="section_uid"]')["value"]).to eq(contact_section.uid)
   end
 end
