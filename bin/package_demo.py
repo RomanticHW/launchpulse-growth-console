@@ -12,6 +12,7 @@ from pathlib import PurePosixPath
 import stat
 import subprocess
 import sys
+import unicodedata
 import zipfile
 
 
@@ -19,6 +20,12 @@ MANIFEST_NAME = ".delivery-manifest.json"
 MANIFEST_VERSION = 1
 HASH_CHUNK_SIZE = 1024 * 1024
 SHA256_LENGTH = 64
+WINDOWS_INVALID_CHARACTERS = frozenset('<>:"|?*')
+WINDOWS_RESERVED_NAMES = frozenset(
+    ("con", "prn", "aux", "nul")
+    + tuple(f"com{index}" for index in range(1, 10))
+    + tuple(f"lpt{index}" for index in range(1, 10))
+)
 
 
 class PackageError(Exception):
@@ -34,6 +41,23 @@ def normalized_path(name: object) -> PurePosixPath | None:
     if any(part in ("", ".", "..") for part in path.parts):
         return None
     return path
+
+
+def portable_path_key(path: PurePosixPath) -> str:
+    components = []
+    for component in path.parts:
+        normalized = unicodedata.normalize("NFC", component)
+        if normalized.endswith((" ", ".")):
+            raise PackageError("Non-portable package path")
+        if any(ord(character) < 32 or ord(character) == 127 for character in normalized):
+            raise PackageError("Non-portable package path")
+        if any(character in WINDOWS_INVALID_CHARACTERS for character in normalized):
+            raise PackageError("Non-portable package path")
+        device_name = normalized.split(".", 1)[0].casefold()
+        if device_name in WINDOWS_RESERVED_NAMES:
+            raise PackageError("Non-portable package path")
+        components.append(unicodedata.normalize("NFC", normalized.casefold()))
+    return "/".join(components)
 
 
 def blocked_path(path: PurePosixPath) -> bool:
@@ -71,7 +95,7 @@ def validate_source_path(relative: object) -> PurePosixPath:
     path = normalized_path(relative)
     if path is None:
         raise PackageError("Unsafe package path")
-    if path.as_posix() == MANIFEST_NAME:
+    if portable_path_key(path) == MANIFEST_NAME:
         raise PackageError(f"Reserved package path: {MANIFEST_NAME}")
     if blocked_path(path):
         raise PackageError(f"Blocked package path: {path.as_posix()}")
@@ -145,9 +169,10 @@ def parse_manifest(data: bytes) -> list[dict[str, str]]:
         digest = entry.get("sha256")
         path = validate_source_path(relative)
         canonical = path.as_posix()
-        if canonical in seen:
+        portable_key = portable_path_key(path)
+        if portable_key in seen:
             raise PackageError(f"Duplicate manifest path: {canonical}")
-        seen.add(canonical)
+        seen.add(portable_key)
         if not isinstance(digest, str) or len(digest) != SHA256_LENGTH:
             raise PackageError(f"Invalid manifest hash: {canonical}")
         if any(character not in "0123456789abcdef" for character in digest):
@@ -191,9 +216,10 @@ def git_source_paths(root: str) -> list[dict[str, str | None]] | None:
         relative = os.fsdecode(raw_name)
         path = validate_source_path(relative)
         canonical = path.as_posix()
-        if canonical in seen:
+        portable_key = portable_path_key(path)
+        if portable_key in seen:
             raise PackageError(f"Duplicate tracked path: {canonical}")
-        seen.add(canonical)
+        seen.add(portable_key)
         files.append({"path": canonical, "sha256": None})
     return files
 
@@ -282,13 +308,18 @@ def verify_archive(archive_path: str) -> None:
             raise PackageError("Delivery manifest must appear exactly once")
 
         by_name: dict[str, zipfile.ZipInfo] = {}
+        portable_names: set[str] = set()
         for entry in entries:
             path = normalized_path(entry.filename)
             if path is None:
                 raise PackageError("Unsafe package entry")
             canonical = path.as_posix()
-            if canonical in by_name:
+            portable_key = portable_path_key(path)
+            if portable_key == MANIFEST_NAME and canonical != MANIFEST_NAME:
+                raise PackageError("Reserved package entry")
+            if portable_key in portable_names:
                 raise PackageError(f"Duplicate package entry: {canonical}")
+            portable_names.add(portable_key)
             by_name[canonical] = entry
             mode = (entry.external_attr >> 16) & 0xFFFF
             if stat.S_ISLNK(mode):

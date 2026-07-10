@@ -364,6 +364,43 @@ RSpec.describe "bin/package-demo" do
     end
   end
 
+  it "rejects portable case collisions in the Git tracked-file manifest" do
+    Dir.mktmpdir("package-demo-portable-collision") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :directory)
+      output = Pathname(tmpdir).join("launchpulse-demo.zip")
+      blob = git(checkout, "hash-object", "-w", "--stdin", stdin_data: "portable collision").strip
+      index_entries = [ "docs/A.txt", "docs/a.txt" ].map do |path|
+        "100644 #{blob} 0\t#{path}\n"
+      end.join
+      _stdout, _stderr, index_status = Open3.capture3(
+        "git", "update-index", "--add", "--index-info", chdir: checkout.to_s, stdin_data: index_entries
+      )
+      skip("Git cannot construct a case-collision fixture on this platform") unless index_status.success?
+      expect(git(checkout, "ls-files", "--cached", "docs/A.txt", "docs/a.txt").lines(chomp: true)).to contain_exactly(
+        "docs/A.txt", "docs/a.txt"
+      )
+
+      package_stdout, package_stderr, status = run_package(checkout, output)
+
+      expect(status).not_to be_success, -> { "Package unexpectedly passed:\n#{package_stdout}\n#{package_stderr}" }
+      expect("#{package_stdout}\n#{package_stderr}").to include("docs/a.txt")
+      expect(output).not_to exist
+    end
+  end
+
+  it "rejects a tracked Windows reserved device path before packaging" do
+    Dir.mktmpdir("package-demo-portable-path") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :directory)
+      output = Pathname(tmpdir).join("launchpulse-demo.zip")
+      track(checkout, "docs/CON.txt", "portable path fixture")
+
+      _stdout, _stderr, status = run_package(checkout, output)
+
+      expect(status).not_to be_success
+      expect(output).not_to exist
+    end
+  end
+
   [
     ".env",
     ".envrc",
@@ -604,6 +641,126 @@ RSpec.describe "bin/package-demo" do
 
       expect(status).not_to be_success
       expect(stderr).to include("duplicate.txt")
+    end
+  end
+
+  it "rejects a portable alias beside the exact root delivery manifest" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("manifest-alias.zip")
+      content = "alias content"
+      alias_path = ".DELIVERY-MANIFEST.JSON"
+      create_manifest_zip(
+        package,
+        entries: [ { "path" => alias_path, "content" => content } ],
+        manifest: {
+          "version" => 1,
+          "files" => [ { "path" => alias_path, "sha256" => Digest::SHA256.hexdigest(content) } ]
+        }
+      )
+
+      _stdout, stderr, status = verify_package(project_root, package)
+
+      expect(status).not_to be_success
+      expect(stderr).not_to include(content)
+    end
+  end
+
+  it "rejects case and Unicode normalization collisions in ZIP paths" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("portable-collision.zip")
+      collisions = [
+        [ "docs/A.txt", "docs/a.txt" ],
+        [ "docs/café.txt", "docs/cafe\u0301.txt" ]
+      ]
+      collisions.each do |paths|
+        entries = paths.map { |path| { "path" => path, "content" => "fixture" } }
+        files = [ { "path" => paths.first, "sha256" => Digest::SHA256.hexdigest("fixture") } ]
+        create_manifest_zip(package, entries:, manifest: { "version" => 1, "files" => files })
+
+        _stdout, _stderr, status = verify_package(project_root, package)
+
+        expect(status).not_to be_success
+      end
+    end
+  end
+
+  it "rejects case and Unicode normalization collisions in manifest paths" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("portable-manifest-collision.zip")
+      collisions = [
+        [ "docs/A.txt", "docs/a.txt" ],
+        [ "docs/café.txt", "docs/cafe\u0301.txt" ]
+      ]
+      collisions.each do |paths|
+        files = paths.map do |path|
+          { "path" => path, "sha256" => Digest::SHA256.hexdigest("fixture") }
+        end
+        create_manifest_zip(
+          package,
+          entries: [ { "path" => paths.first, "content" => "fixture" } ],
+          manifest: { "version" => 1, "files" => files }
+        )
+
+        _stdout, _stderr, status = verify_package(project_root, package)
+
+        expect(status).not_to be_success
+      end
+    end
+  end
+
+  it "rejects Windows reserved device names in any path component" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("windows-reserved-path.zip")
+      reserved = %w[CON PRN AUX NUL COM1 COM2 COM3 COM4 COM5 COM6 COM7 COM8 COM9
+                    LPT1 LPT2 LPT3 LPT4 LPT5 LPT6 LPT7 LPT8 LPT9 CON.txt]
+      reserved.each do |component|
+        path = "docs/#{component}/payload.txt"
+        create_manifest_zip(
+          package,
+          entries: [ { "path" => path, "content" => "fixture" } ],
+          manifest: {
+            "version" => 1,
+            "files" => [ { "path" => path, "sha256" => Digest::SHA256.hexdigest("fixture") } ]
+          }
+        )
+
+        _stdout, _stderr, status = verify_package(project_root, package)
+
+        expect(status).not_to be_success
+      end
+    end
+  end
+
+  it "rejects non-portable component endings, control characters, and Windows-invalid characters" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("invalid-portable-path.zip")
+      paths = [
+        "docs/trailing-space ",
+        "docs/trailing-dot.",
+        "docs/control-\u0001.txt",
+        'docs/less<than.txt',
+        'docs/greater>than.txt',
+        'docs/colon:name.txt',
+        'docs/quote"name.txt',
+        "docs/pipe|name.txt",
+        "docs/question?.txt",
+        "docs/star*.txt"
+      ]
+      paths.each do |path|
+        create_manifest_zip(
+          package,
+          entries: [ { "path" => path, "content" => "fixture" } ],
+          manifest: {
+            "version" => 1,
+            "files" => [ { "path" => path, "sha256" => Digest::SHA256.hexdigest("fixture") } ]
+          }
+        )
+
+        _stdout, stderr, status = verify_package(project_root, package)
+
+        expect(status).not_to be_success
+        expect(stderr).not_to include("fixture")
+      end
     end
   end
 
