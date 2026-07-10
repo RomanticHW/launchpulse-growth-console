@@ -44,7 +44,8 @@ module Public
       events.each { |event| enqueue_public_event!(event) }
 
       redirect_after_checkout(site)
-    rescue ActiveRecord::RecordNotUnique
+    rescue ActiveRecord::RecordNotUnique => error
+      raise unless request_token_constraint_violation?(error, Order::REQUEST_TOKEN_INDEX_NAME)
       raise unless request_token && site && find_order_by_request_token(site, request_token)
 
       redirect_after_checkout(site)
@@ -95,7 +96,8 @@ module Public
       events.each { |event| enqueue_public_event!(event) }
 
       redirect_after_checkout(site)
-    rescue ActiveRecord::RecordNotUnique
+    rescue ActiveRecord::RecordNotUnique => error
+      raise unless request_token_constraint_violation?(error, Order::REQUEST_TOKEN_INDEX_NAME)
       raise unless request_token && site && find_order_by_request_token(site, request_token)
 
       redirect_after_checkout(site)

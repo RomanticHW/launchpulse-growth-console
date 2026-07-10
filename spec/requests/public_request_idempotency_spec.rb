@@ -40,6 +40,17 @@ RSpec.describe "Public request idempotency" do
     [ site, section ]
   end
 
+  def capture_record_not_unique
+    ActiveRecord::Base.transaction(requires_new: true) { yield }
+    raise "expected a database unique violation"
+  rescue ActiveRecord::RecordNotUnique => error
+    error
+  end
+
+  def postgres_constraint_name(error)
+    error.cause.result.error_field(PG::Result::PG_DIAG_CONSTRAINT_NAME)
+  end
+
   it "replays a contact submission without duplicating records, events, or jobs" do
     site, form = published_contact_form(slug: "contact-idempotency-demo")
     request_token = SecureRandom.uuid
@@ -94,6 +105,71 @@ RSpec.describe "Public request idempotency" do
     expect(response).to have_http_status(:unprocessable_content)
     expect(site.contacts.count).to eq(0)
     expect(form.form_submissions.count).to eq(0)
+    expect(site.events.count).to eq(0)
+  end
+
+  it "treats a form request token constraint race as success when the scoped submission exists" do
+    site, form = published_contact_form(slug: "contact-race-demo")
+    request_token = SecureRandom.uuid
+    contact = site.contacts.create!(email: "lead@example.test", source: "public_site")
+    existing_submission = form.form_submissions.create!(
+      contact:,
+      payload: { "email" => contact.email },
+      request_token:
+    )
+    request_token_error = capture_record_not_unique do
+      duplicate = form.form_submissions.build(payload: { "email" => contact.email }, request_token:)
+      duplicate.save!(validate: false)
+    end
+    expect(postgres_constraint_name(request_token_error)).to eq("idx_form_submissions_unique_request_token")
+    allow_any_instance_of(Public::FormSubmissionsController).to receive(:find_site).and_return(site)
+    allow(site.forms).to receive(:find).and_return(form)
+    allow(form.form_submissions).to receive(:create!).and_raise(request_token_error)
+    allow_any_instance_of(Public::FormSubmissionsController)
+      .to receive(:find_submission_by_request_token)
+      .and_return(nil, existing_submission)
+
+    expect do
+      post "/s/contact-race-demo/forms/#{form.id}/submissions", params: {
+        request_token:,
+        form_submission: { email: contact.email }
+      }
+    end.not_to have_enqueued_job(AggregateEventJob)
+
+    expect(response).to redirect_to("/s/contact-race-demo?submitted=1")
+    expect(form.form_submissions.count).to eq(1)
+    expect(site.events.count).to eq(0)
+  end
+
+  it "does not swallow a contact email constraint violation when the request token already exists" do
+    site, form = published_contact_form(slug: "contact-unrelated-race-demo")
+    request_token = SecureRandom.uuid
+    contact = site.contacts.create!(email: "lead@example.test", source: "public_site")
+    existing_submission = form.form_submissions.create!(
+      contact:,
+      payload: { "email" => contact.email },
+      request_token:
+    )
+    contact_error = capture_record_not_unique do
+      duplicate = site.contacts.build(email: contact.email, source: "public_site")
+      duplicate.save!(validate: false)
+    end
+    expect(postgres_constraint_name(contact_error)).to eq("index_contacts_on_site_id_and_email")
+    allow_any_instance_of(Public::FormSubmissionsController).to receive(:find_site).and_return(site)
+    allow(site.forms).to receive(:find).and_return(form)
+    allow(site.contacts).to receive(:find_or_create_by!).and_raise(contact_error)
+    allow_any_instance_of(Public::FormSubmissionsController)
+      .to receive(:find_submission_by_request_token)
+      .and_return(nil, existing_submission)
+
+    expect do
+      post "/s/contact-unrelated-race-demo/forms/#{form.id}/submissions", params: {
+        request_token:,
+        form_submission: { email: contact.email }
+      }
+    end.to raise_error(ActiveRecord::RecordNotUnique) { |error| expect(error).to equal(contact_error) }
+
+    expect(form.form_submissions.count).to eq(1)
     expect(site.events.count).to eq(0)
   end
 
@@ -180,12 +256,23 @@ RSpec.describe "Public request idempotency" do
       source: "public_checkout",
       request_token:
     )
+    request_token_error = capture_record_not_unique do
+      duplicate = site.orders.build(
+        number: "ORD-OTHER",
+        email: "other@example.test",
+        total: 28,
+        source: "public_checkout",
+        request_token:
+      )
+      duplicate.save!(validate: false)
+    end
+    expect(postgres_constraint_name(request_token_error)).to eq("idx_orders_unique_request_token")
     allow_any_instance_of(Public::CheckoutsController)
       .to receive(:find_order_by_request_token)
       .and_return(nil, existing_order)
     allow_any_instance_of(Public::CheckoutsController)
       .to receive(:create_product_order!)
-      .and_raise(ActiveRecord::RecordNotUnique, "duplicate request token")
+      .and_raise(request_token_error)
 
     expect do
       post "/s/product-race-demo/products/calm-cream/checkout", params: {
@@ -199,20 +286,71 @@ RSpec.describe "Public request idempotency" do
     expect(site.events.count).to eq(0)
   end
 
-  it "does not swallow an unrelated product order unique violation" do
+  it "does not swallow an order number constraint violation when the request token already exists" do
     site, _product, section = published_product(slug: "product-unrelated-race-demo")
+    request_token = SecureRandom.uuid
+    existing_order = site.orders.create!(
+      number: "ORD-RACE",
+      email: "buyer@example.test",
+      total: 28,
+      source: "public_checkout",
+      request_token:
+    )
+    order_number_error = capture_record_not_unique do
+      duplicate = site.orders.build(
+        number: existing_order.number,
+        email: "other@example.test",
+        total: 28,
+        source: "public_checkout",
+        request_token: SecureRandom.uuid
+      )
+      duplicate.save!(validate: false)
+    end
+    expect(postgres_constraint_name(order_number_error)).to eq("index_orders_on_site_id_and_number")
+    allow_any_instance_of(Public::CheckoutsController)
+      .to receive(:find_order_by_request_token)
+      .and_return(nil, existing_order)
     allow_any_instance_of(Public::CheckoutsController)
       .to receive(:create_product_order!)
-      .and_raise(ActiveRecord::RecordNotUnique, "different unique index")
+      .and_raise(order_number_error)
 
     expect do
       post "/s/product-unrelated-race-demo/products/calm-cream/checkout", params: {
         section_uid: section.uid,
-        request_token: SecureRandom.uuid
+        request_token:
       }
-    end.to raise_error(ActiveRecord::RecordNotUnique, "different unique index")
+    end.to raise_error(ActiveRecord::RecordNotUnique) { |error| expect(error).to equal(order_number_error) }
 
-    expect(site.orders.count).to eq(0)
+    expect(site.orders.count).to eq(1)
+    expect(site.events.count).to eq(0)
+  end
+
+  it "fails closed when a unique violation has no PostgreSQL constraint information" do
+    site, _product, section = published_product(slug: "product-unknown-race-demo")
+    request_token = SecureRandom.uuid
+    existing_order = site.orders.create!(
+      number: "ORD-RACE",
+      email: "buyer@example.test",
+      total: 28,
+      source: "public_checkout",
+      request_token:
+    )
+    unknown_error = ActiveRecord::RecordNotUnique.new("constraint unavailable")
+    allow_any_instance_of(Public::CheckoutsController)
+      .to receive(:find_order_by_request_token)
+      .and_return(nil, existing_order)
+    allow_any_instance_of(Public::CheckoutsController)
+      .to receive(:create_product_order!)
+      .and_raise(unknown_error)
+
+    expect do
+      post "/s/product-unknown-race-demo/products/calm-cream/checkout", params: {
+        section_uid: section.uid,
+        request_token:
+      }
+    end.to raise_error(ActiveRecord::RecordNotUnique) { |error| expect(error).to equal(unknown_error) }
+
+    expect(site.orders.count).to eq(1)
     expect(site.events.count).to eq(0)
   end
 

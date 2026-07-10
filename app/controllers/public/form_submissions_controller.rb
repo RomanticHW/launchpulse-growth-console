@@ -41,7 +41,8 @@ module Public
       enqueue_public_event!(event)
 
       redirect_after_submission(site)
-    rescue ActiveRecord::RecordNotUnique
+    rescue ActiveRecord::RecordNotUnique => error
+      raise unless request_token_constraint_violation?(error, FormSubmission::REQUEST_TOKEN_INDEX_NAME)
       raise unless request_token && form && find_submission_by_request_token(form, request_token)
 
       redirect_after_submission(site)

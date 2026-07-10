@@ -53,6 +53,16 @@ module Public
       raw_token
     end
 
+    def request_token_constraint_violation?(error, expected_constraint_name)
+      database_error = error.cause
+      return false unless defined?(PG::Error) && database_error.is_a?(PG::Error)
+
+      result = database_error.result
+      return false unless result
+
+      result.error_field(PG::Result::PG_DIAG_CONSTRAINT_NAME) == expected_constraint_name
+    end
+
     def assignment_map(site, visible_section_uids: nil)
       site.experiments.active.includes(:variants, :section).each_with_object({}) do |experiment, result|
         next unless experiment.section
