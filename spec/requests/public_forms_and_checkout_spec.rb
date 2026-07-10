@@ -406,6 +406,7 @@ RSpec.describe "Public forms and checkout" do
     form = site.forms.create!(section:, name: "Lead form")
     form.form_fields.create!(label: "Email address", key: "email", field_type: "email", required: true, position: 0)
     form.form_fields.create!(label: "Team size", key: "headcount", field_type: "text", required: true, position: 1)
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
 
     form.form_fields.find_by!(key: "headcount").update!(label: "Number of people")
     post "/s/stable-form-key-demo/forms/#{form.id}/submissions", params: {

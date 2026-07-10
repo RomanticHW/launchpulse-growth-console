@@ -59,6 +59,53 @@ RSpec.describe SectionPatch do
     expect(patch.after_props).to eq("headline" => "Better")
   end
 
+  it "locks the site before the patch while applying" do
+    patch, section = build_patch
+    site = patch.section.site
+    site_lock_held = false
+
+    expect(site).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      original.call(*args) do
+        site_lock_held = true
+        block.call
+      ensure
+        site_lock_held = false
+      end
+    end
+    expect(patch).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      expect(site_lock_held).to be(true)
+      original.call(*args, &block)
+    end
+
+    patch.apply!
+
+    expect(section.reload.props).to eq("headline" => "Better")
+  end
+
+  it "locks the site before the patch while reverting" do
+    patch, section = build_patch
+    patch.apply!
+    site = patch.section.site
+    site_lock_held = false
+
+    expect(site).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      original.call(*args) do
+        site_lock_held = true
+        block.call
+      ensure
+        site_lock_held = false
+      end
+    end
+    expect(patch).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      expect(site_lock_held).to be(true)
+      original.call(*args, &block)
+    end
+
+    patch.revert!
+
+    expect(section.reload.props).to eq("headline" => "Original")
+  end
+
   it "is idempotent when already applied" do
     patch, section = build_patch
     patch.apply!

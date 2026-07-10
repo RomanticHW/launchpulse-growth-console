@@ -36,6 +36,17 @@ RSpec.describe "Public sites" do
     expect(response.body).not_to include("Draft headline")
   end
 
+  it "does not render draft sections when a published site has no snapshot" do
+    site = create(:site, slug: "missing-snapshot-demo", status: "published")
+    page = create(:page, site:)
+    create(:section, page:, kind: "hero", props: { "headline" => "Unpublished confidential draft", "subheadline" => "Draft body", "cta" => "Start" })
+
+    get "/s/missing-snapshot-demo"
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).not_to include("Unpublished confidential draft")
+  end
+
   it "renders the published site and assigns the visitor to active experiments" do
     site = create(:site, slug: "public-demo", status: "published")
     page = create(:page, site:)
@@ -218,6 +229,7 @@ RSpec.describe "Public sites" do
     section = create(:section, page:, kind: "contact_form")
     form = site.forms.create!(section:, name: "Lead form")
     form.form_fields.create!(label: "Email", field_type: "email", required: true, position: 0)
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
 
     expect do
       post "/s/form-demo/forms/#{form.id}/submissions", params: {
@@ -340,6 +352,7 @@ RSpec.describe "Public sites" do
     hero_experiment = create(:experiment, site:, section: hero_section)
     create(:variant, experiment: contact_experiment, key: "contact", name: "Contact")
     create(:variant, experiment: hero_experiment, key: "hero", name: "Hero")
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
 
     post "/s/section-event-demo/events", params: { event_type: "cta_click", section_uid: hero_section.uid }
 

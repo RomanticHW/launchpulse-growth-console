@@ -10,27 +10,29 @@ module Experiments
 
       experiment = nil
 
-      section.with_lock do
-        # 实验状态流统一收在 service 里；控制器不直接改状态，避免绕过补丁和胜出版本的业务规则。
-        validate_launchable!(recommendation)
-        raise InvalidTransition, "这条建议已有未结束的实验。" if unresolved_recommendation_experiment?(site, recommendation)
-        raise InvalidTransition, "这个区块已有未结束的实验。" if unresolved_section_experiment?(site, section)
+      site.with_lock do
+        section.with_lock do
+          # 实验状态流统一收在 service 里；控制器不直接改状态，避免绕过补丁和胜出版本的业务规则。
+          validate_launchable!(recommendation)
+          raise InvalidTransition, "这条建议已有未结束的实验。" if unresolved_recommendation_experiment?(site, recommendation)
+          raise InvalidTransition, "这个区块已有未结束的实验。" if unresolved_section_experiment?(site, section)
 
-        patch = recommendation.section_patch
-        ActiveRecord::Base.transaction do
-          experiment = site.experiments.create!(
-            recommendation:,
-            section:,
-            name: "实验：#{recommendation.title}",
-            status: "active",
-            primary_goal: primary_goal_for(recommendation),
-            started_at: Time.current
-          )
-          experiment.variants.create!(name: "原版本", key: "control", role: "control", props: control_props_for(section, patch), weight: 50)
-          experiment.variants.create!(name: "建议版本", key: "variant", role: "variant", props: variant_props_for(section, recommendation, patch), weight: 50)
-          recommendation.update!(status: "testing")
-          patch&.update!(status: "testing")
-          audit!(account:, user:, site:, action: "experiment_launched", experiment:, metadata: { recommendation_id: recommendation.id })
+          patch = recommendation.section_patch
+          ActiveRecord::Base.transaction do
+            experiment = site.experiments.create!(
+              recommendation:,
+              section:,
+              name: "实验：#{recommendation.title}",
+              status: "active",
+              primary_goal: primary_goal_for(recommendation),
+              started_at: Time.current
+            )
+            experiment.variants.create!(name: "原版本", key: "control", role: "control", props: control_props_for(section, patch), weight: 50)
+            experiment.variants.create!(name: "建议版本", key: "variant", role: "variant", props: variant_props_for(section, recommendation, patch), weight: 50)
+            recommendation.update!(status: "testing")
+            patch&.update!(status: "testing")
+            audit!(account:, user:, site:, action: "experiment_launched", experiment:, metadata: { recommendation_id: recommendation.id })
+          end
         end
       end
 
@@ -66,19 +68,21 @@ module Experiments
 
     def apply_winner!(experiment:, variant:, user:, account:)
       # 胜出版本只改变当前草稿区块，不回写补丁快照；补丁的 before/after 是实验创建时的证据。
-      experiment.with_lock do
-        raise InvalidTransition, "请先完成实验，再应用胜出版本。" unless experiment.status == "completed"
-        raise InvalidTransition, "胜出版本已经应用过。" if experiment.winner_applied_at.present?
-        raise InvalidTransition, "该版本不属于当前实验。" if variant.experiment_id != experiment.id
+      experiment.site.with_lock do
+        experiment.with_lock do
+          raise InvalidTransition, "请先完成实验，再应用胜出版本。" unless experiment.status == "completed"
+          raise InvalidTransition, "胜出版本已经应用过。" if experiment.winner_applied_at.present?
+          raise InvalidTransition, "该版本不属于当前实验。" if variant.experiment_id != experiment.id
 
-        experiment.section.update!(props: variant.props)
-        experiment.update!(winner_variant: variant, winner_applied_at: Time.current)
-        if control_variant?(variant)
-          mark_control_winner!(experiment)
-          audit!(account:, user:, site: experiment.site, action: "experiment_control_won", experiment:, metadata: { variant_id: variant.id })
-        else
-          mark_recommended_winner!(experiment)
-          audit!(account:, user:, site: experiment.site, action: "experiment_winner_applied", experiment:, metadata: { variant_id: variant.id })
+          experiment.section.update!(props: variant.props)
+          experiment.update!(winner_variant: variant, winner_applied_at: Time.current)
+          if control_variant?(variant)
+            mark_control_winner!(experiment)
+            audit!(account:, user:, site: experiment.site, action: "experiment_control_won", experiment:, metadata: { variant_id: variant.id })
+          else
+            mark_recommended_winner!(experiment)
+            audit!(account:, user:, site: experiment.site, action: "experiment_winner_applied", experiment:, metadata: { variant_id: variant.id })
+          end
         end
       end
     end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_09_093000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_09_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -267,7 +267,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_093000) do
   end
 
   create_table "published_snapshots", force: :cascade do |t|
-    t.string "checksum"
+    t.string "checksum", null: false
     t.datetime "created_at", null: false
     t.text "note"
     t.jsonb "payload", default: {}, null: false
@@ -279,6 +279,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_093000) do
     t.index ["published_by_id"], name: "index_published_snapshots_on_published_by_id"
     t.index ["site_id", "version"], name: "index_published_snapshots_on_site_id_and_version", unique: true
     t.index ["site_id"], name: "index_published_snapshots_on_site_id"
+    t.check_constraint "btrim(checksum::text) <> ''::text", name: "published_snapshots_checksum_not_blank"
   end
 
   create_table "recommendations", force: :cascade do |t|
