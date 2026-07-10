@@ -5,6 +5,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT="${1:-"$ROOT/../launchpulse-demo.zip"}"
 
 cd "$ROOT"
+OUTPUT="$(python3 - "$ROOT" "$OUTPUT" <<'PY'
+import os
+import sys
+
+root = os.path.realpath(sys.argv[1])
+output = os.path.realpath(os.path.abspath(sys.argv[2]))
+
+if os.path.commonpath([root, output]) == root:
+    raise SystemExit(f"Output path must be outside project root: {output}")
+
+print(output)
+PY
+)"
 OUTPUT_DIR="$(dirname "$OUTPUT")"
 TEMP_DIR="$(mktemp -d "$OUTPUT_DIR/.package-demo.XXXXXX")"
 TEMP_OUTPUT="$TEMP_DIR/package.zip"

@@ -157,4 +157,32 @@ RSpec.describe "bin/package-demo" do
       expect(Dir.glob(File.join(tmpdir, ".package-demo.*"))).to be_empty
     end
   end
+
+  it "rejects a project-internal output path before creating artifacts" do
+    Dir.mktmpdir("package-demo-inside-", project_root.join("tmp").to_s) do |tmpdir|
+      output = Pathname(tmpdir).join("launchpulse-demo.zip")
+
+      _stdout, stderr, status = Open3.capture3(project_root.join("bin/package-demo").to_s, output.to_s)
+
+      expect(status).not_to be_success
+      expect(stderr).to include("Output path must be outside project root:")
+      expect(output).not_to exist
+      expect(Dir.glob(File.join(tmpdir, ".package-demo.*"))).to be_empty
+    end
+  end
+
+  it "allows an external sibling output path with the same prefix" do
+    prefix = "#{project_root.basename}-copy-"
+
+    Dir.mktmpdir(prefix, project_root.dirname.to_s) do |tmpdir|
+      output = Pathname(tmpdir).join("launchpulse-demo.zip")
+
+      stdout, stderr, status = Open3.capture3(project_root.join("bin/package-demo").to_s, output.to_s)
+
+      expect(status).to be_success, -> { "Package failed:\n#{stdout}\n#{stderr}" }
+      expect(output).to exist
+      expect(zip_entries(output)).to include("docs/demo-guide.md")
+      expect(Dir.glob(File.join(tmpdir, ".package-demo.*"))).to be_empty
+    end
+  end
 end
