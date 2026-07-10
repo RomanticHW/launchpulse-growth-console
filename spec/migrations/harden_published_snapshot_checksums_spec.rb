@@ -2,8 +2,6 @@ require "rails_helper"
 require Rails.root.join("db/migrate/20260709100000_harden_published_snapshot_checksums")
 
 RSpec.describe HardenPublishedSnapshotChecksums do
-  self.use_transactional_tests = false
-
   it "backfills historical blank checksums and safely reverses the constraints" do
     migration = described_class.new
     snapshot_model = Class.new(ActiveRecord::Base) do
@@ -15,13 +13,16 @@ RSpec.describe HardenPublishedSnapshotChecksums do
     snapshot_ids = []
 
     begin
+      expect(self.class.use_transactional_tests).to be(true)
+      expect(described_class.disable_ddl_transaction).to be(true)
+
       migration.down
       snapshot_model.reset_column_information
       expect(snapshot_model.columns_hash.fetch("checksum").null).to be(true)
       expect(checksum_constraint_names(snapshot_model)).not_to include(described_class::CHECK_CONSTRAINT_NAME)
 
       next_version = snapshot_model.where(site_id: site.id).maximum(:version).to_i + 1
-      snapshots = [ nil, "", "   " ].each_with_index.map do |checksum, index|
+      snapshots = [ nil, "", "   ", "\t", "\n" ].each_with_index.map do |checksum, index|
         payload = {
           "site" => { "name" => "Historical #{index}", "id" => site.id },
           "pages" => [ { "path" => "/", "sections" => [ { "props" => { "b" => 2, "a" => 1 } } ] } ]
@@ -38,8 +39,17 @@ RSpec.describe HardenPublishedSnapshotChecksums do
         snapshot
       end
 
-      migration.up
+      migration_sql = []
+      subscriber = lambda do |_name, _started, _finished, _unique_id, payload|
+        migration_sql << payload.fetch(:sql)
+      end
+      ActiveSupport::Notifications.subscribed(subscriber, "sql.active_record") do
+        migration.up
+      end
       snapshot_model.reset_column_information
+
+      expect(migration_sql.grep(/ADD CONSTRAINT/)).to all(include("NOT VALID"))
+      expect(migration_sql.join("\n")).to include("VALIDATE CONSTRAINT")
 
       snapshots.each do |snapshot|
         snapshot.reload
@@ -48,6 +58,11 @@ RSpec.describe HardenPublishedSnapshotChecksums do
       end
       expect(snapshot_model.columns_hash.fetch("checksum").null).to be(false)
       expect(checksum_constraint_names(snapshot_model)).to include(described_class::CHECK_CONSTRAINT_NAME)
+      expect(checksum_constraint_names(snapshot_model)).not_to include("published_snapshots_checksum_not_null")
+
+      expect do
+        ActiveRecord::Base.transaction(requires_new: true) { migration.up }
+      end.not_to raise_error
 
       migration.down
       snapshot_model.reset_column_information

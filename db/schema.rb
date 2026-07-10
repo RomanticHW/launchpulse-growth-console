@@ -279,7 +279,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_100000) do
     t.index ["published_by_id"], name: "index_published_snapshots_on_published_by_id"
     t.index ["site_id", "version"], name: "index_published_snapshots_on_site_id_and_version", unique: true
     t.index ["site_id"], name: "index_published_snapshots_on_site_id"
-    t.check_constraint "btrim(checksum::text) <> ''::text", name: "published_snapshots_checksum_not_blank"
+    t.check_constraint "checksum::text !~ '^[[:space:]]*$'::text", name: "published_snapshots_checksum_not_blank"
   end
 
   create_table "recommendations", force: :cascade do |t|

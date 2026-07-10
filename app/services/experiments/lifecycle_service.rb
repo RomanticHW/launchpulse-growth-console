@@ -60,15 +60,17 @@ module Experiments
     end
 
     def complete!(experiment:, user:, account:)
-      experiment.with_lock do
-        unless %w[active paused].include?(experiment.status)
-          raise InvalidTransition, "只有运行中或已暂停的实验可以完成。"
-        end
+      experiment.site.with_lock do
+        experiment.with_lock do
+          unless %w[active paused].include?(experiment.status)
+            raise InvalidTransition, "只有运行中或已暂停的实验可以完成。"
+          end
 
-        experiment.update!(status: "completed", ended_at: Time.current)
-        experiment.recommendation&.update!(status: "tested") if experiment.recommendation&.status == "testing"
-        experiment.recommendation&.section_patch&.update!(status: "tested") if experiment.recommendation&.section_patch&.status == "testing"
-        audit!(account:, user:, site: experiment.site, action: "experiment_completed", experiment:)
+          experiment.update!(status: "completed", ended_at: Time.current)
+          experiment.recommendation&.update!(status: "tested") if experiment.recommendation&.status == "testing"
+          experiment.recommendation&.section_patch&.update!(status: "tested") if experiment.recommendation&.section_patch&.status == "testing"
+          audit!(account:, user:, site: experiment.site, action: "experiment_completed", experiment:)
+        end
       end
     end
 

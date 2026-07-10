@@ -53,13 +53,17 @@ class SectionPatch < ApplicationRecord
   end
 
   def dismiss!
-    unless %w[pending reverted].include?(status)
-      errors.add(:base, "#{status.humanize} patches cannot be dismissed")
-      raise ActiveRecord::RecordInvalid, self
-    end
+    section.site.with_lock do
+      with_lock do
+        unless %w[pending reverted].include?(status)
+          errors.add(:base, "#{status.humanize} patches cannot be dismissed")
+          raise ActiveRecord::RecordInvalid, self
+        end
 
-    update!(status: "dismissed")
-    recommendation.update!(status: "dismissed", dismissed_at: Time.current)
+        update!(status: "dismissed")
+        recommendation.update!(status: "dismissed", dismissed_at: Time.current)
+      end
+    end
   end
 
   private

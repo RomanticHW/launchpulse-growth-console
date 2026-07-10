@@ -196,6 +196,31 @@ RSpec.describe Experiments::LifecycleService do
     end.to raise_error(Experiments::LifecycleService::InvalidTransition)
   end
 
+  it "locks the site before the experiment row while completing" do
+    site, recommendation = recommendation_for(status: "open")
+    service = described_class.new
+    experiment = service.launch_from_recommendation!(site:, recommendation:, user: nil, account: site.account)
+    locked_site = experiment.site
+    site_lock_held = false
+
+    expect(locked_site).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      original.call(*args) do
+        site_lock_held = true
+        block.call
+      ensure
+        site_lock_held = false
+      end
+    end
+    expect(experiment).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      expect(site_lock_held).to be(true)
+      original.call(*args, &block)
+    end
+
+    service.complete!(experiment:, user: nil, account: site.account)
+
+    expect(experiment.reload.status).to eq("completed")
+  end
+
   it "locks the site before the experiment row while applying a winner" do
     site, recommendation = recommendation_for(status: "open")
     service = described_class.new

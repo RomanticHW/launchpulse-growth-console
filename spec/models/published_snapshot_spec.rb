@@ -20,17 +20,29 @@ RSpec.describe PublishedSnapshot do
 
   it "defines a non-null checksum column and a non-blank check constraint" do
     checksum_column = described_class.columns_hash.fetch("checksum")
-    constraint_names = described_class.connection.check_constraints(:published_snapshots).map(&:name)
+    constraint = described_class.connection
+      .check_constraints(:published_snapshots)
+      .find { |candidate| candidate.name == "published_snapshots_checksum_not_blank" }
 
     expect(checksum_column.null).to be(false)
-    expect(constraint_names).to include("published_snapshots_checksum_not_blank")
+    expect(constraint).to be_present
+    expect(constraint.expression).to include("[[:space:]]")
+    expect(constraint.options.fetch(:validate)).to be(true)
   end
 
-  it "rejects an empty checksum at the database boundary" do
-    snapshot = published_snapshot
+  {
+    "nil" => nil,
+    "an empty string" => "",
+    "spaces" => "   ",
+    "a tab" => "\t",
+    "a newline" => "\n"
+  }.each do |description, blank_checksum|
+    it "rejects #{description} at the database boundary" do
+      snapshot = published_snapshot
 
-    expect {
-      described_class.where(id: snapshot.id).update_all(checksum: "")
-    }.to raise_error(ActiveRecord::StatementInvalid)
+      expect {
+        described_class.where(id: snapshot.id).update_all(checksum: blank_checksum)
+      }.to raise_error(ActiveRecord::StatementInvalid)
+    end
   end
 end

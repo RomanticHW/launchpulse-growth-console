@@ -106,6 +106,30 @@ RSpec.describe SectionPatch do
     expect(section.reload.props).to eq("headline" => "Original")
   end
 
+  it "locks the site before the patch while dismissing" do
+    patch, = build_patch
+    site = patch.section.site
+    site_lock_held = false
+
+    expect(site).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      original.call(*args) do
+        site_lock_held = true
+        block.call
+      ensure
+        site_lock_held = false
+      end
+    end
+    expect(patch).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      expect(site_lock_held).to be(true)
+      original.call(*args, &block)
+    end
+
+    patch.dismiss!
+
+    expect(patch.reload.status).to eq("dismissed")
+    expect(patch.recommendation.status).to eq("dismissed")
+  end
+
   it "is idempotent when already applied" do
     patch, section = build_patch
     patch.apply!
