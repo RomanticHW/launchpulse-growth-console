@@ -59,6 +59,11 @@ RSpec.describe "Sites" do
     expect(response.body).to include('data-illustration="coffee-hero"')
     expect(response.body).to include('data-illustration="coffee-feature-0"')
     expect(response.body).to include('data-illustration="coffee-feature-1"')
+
+    preview_cta = Nokogiri::HTML(response.body).at_css('[data-preview-target="frame"] a[href="#contact"]')
+    expect(preview_cta).to be_present
+    expect(preview_cta["data-controller"]).to be_nil
+    expect(preview_cta["data-public-tracking-event-type-value"]).to be_nil
   end
 
   it "renders a submit-in-progress label for the visitor simulation action" do

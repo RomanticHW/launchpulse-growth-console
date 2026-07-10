@@ -26,11 +26,11 @@
       <%= form_with url: session_path, class: "mt-6 space-y-4" do |form| %>
         <div>
           <%= form.label :email, "邮箱", class: "block text-sm font-medium text-slate-700" %>
-          <%= form.email_field :email, value: "demo@launchpulse.test", class: "mt-2 w-full rounded-[var(--radius-control)] border border-paper-line bg-white px-3 py-2 text-sm focus:border-signal-amber focus:outline-none focus:ring-4 focus:ring-signal-amber/10" %>
+          <%= form.email_field :email, value: "demo@launchpulse.test", autocomplete: "username", class: "mt-2 w-full rounded-[var(--radius-control)] border border-paper-line bg-white px-3 py-2 text-sm focus:border-signal-amber focus:outline-none focus:ring-4 focus:ring-signal-amber/10" %>
         </div>
         <div>
           <%= form.label :password, "密码", class: "block text-sm font-medium text-slate-700" %>
-          <%= form.password_field :password, value: "password", class: "mt-2 w-full rounded-[var(--radius-control)] border border-paper-line bg-white px-3 py-2 text-sm focus:border-signal-amber focus:outline-none focus:ring-4 focus:ring-signal-amber/10" %>
+          <%= form.password_field :password, value: "password", autocomplete: "current-password", class: "mt-2 w-full rounded-[var(--radius-control)] border border-paper-line bg-white px-3 py-2 text-sm focus:border-signal-amber focus:outline-none focus:ring-4 focus:ring-signal-amber/10" %>
         </div>
         <%= form.submit "进入控制台", class: "w-full rounded-[var(--radius-control)] bg-console-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-console-900 hover:shadow-[0_0_0_6px_rgb(245_165_36_/_0.12)] active:translate-y-px" %>
       <% end %>

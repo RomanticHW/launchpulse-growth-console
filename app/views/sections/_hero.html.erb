@@ -8,6 +8,7 @@
          class="mt-7 inline-flex rounded-[var(--radius-control)] px-5 py-3 text-sm font-semibold transition hover:scale-[1.02] focus-visible:scale-[1.02] active:translate-y-px"
          style="background: var(--site-accent); color: var(--site-on-accent); box-shadow: 0 16px 40px color-mix(in srgb, var(--site-accent) 28%, transparent);"
          <% if local_assigns[:public_site] %>
+         data-turbo="false"
          data-controller="public-tracking"
          data-public-tracking-url-value="<%= public_site_events_path(public_site.slug) %>"
          data-public-tracking-event-type-value="cta_click"

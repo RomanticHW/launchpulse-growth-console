@@ -36,6 +36,24 @@ RSpec.describe "Public sites" do
     expect(response.body).not_to include("Draft headline")
   end
 
+  it "keeps the published hero CTA in the current document while tracking the click" do
+    site = create(:site, slug: "hero-cta-demo", status: "published")
+    page = create(:page, site:)
+    section = create(:section, page:, kind: "hero", props: { "headline" => "Published headline", "subheadline" => "Published body", "cta" => "Start" })
+    create(:section, page:, kind: "contact_form", position: 1)
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+
+    get "/s/hero-cta-demo"
+
+    cta = Nokogiri::HTML(response.body).at_css('a[href="#contact"]')
+    expect(cta).to be_present
+    expect(cta["data-turbo"]).to eq("false")
+    expect(cta["data-controller"]).to eq("public-tracking")
+    expect(cta["data-public-tracking-event-type-value"]).to eq("cta_click")
+    expect(cta["data-public-tracking-section-uid-value"]).to eq(section.uid)
+    expect(cta["data-action"]).to eq("public-tracking#send")
+  end
+
   it "does not render draft sections when a published site has no snapshot" do
     site = create(:site, slug: "missing-snapshot-demo", status: "published")
     page = create(:page, site:)
