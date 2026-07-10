@@ -14,17 +14,22 @@ class TrafficSimulatorJob < ApplicationJob
       source = SOURCES.sample
       device = DEVICES.sample
       occurred_at = rand(10.days.to_i).seconds.ago
-      assignments = experiments.each_with_object({}) do |experiment, result|
-        assignment = Experiments::AssignmentService.new(experiment).assign(visitor_id)
-        result[experiment.section.uid] = assignment if assignment
-      end
-      broadcast_experiment_metrics(site, experiments, index)
-      assigned_variants = assignments.values.each_with_object({}) do |assignment, result|
-        result[assignment.experiment_id.to_s] = assignment.variant.key
+      assignments = nil
+      page_view = nil
+      ActiveRecord::Base.transaction do
+        assignments = experiments.each_with_object({}) do |experiment, result|
+          assignment = Experiments::AssignmentService.new(experiment).assign(visitor_id)
+          result[experiment.section.uid] = assignment if assignment
+        end
+        assigned_variants = assignments.values.each_with_object({}) do |assignment, result|
+          result[assignment.experiment_id.to_s] = assignment.variant.key
+        end
+
+        # page_view 只记录分配结果，不归因到某个实验；真正转化要等到具体 section 行为发生。
+        page_view = create_event!(site, page, "page_view", visitor_id, source, device, occurred_at, nil, metadata: { simulated: true, assigned_variants: })
       end
 
-      # page_view 只记录分配结果，不归因到某个实验；真正转化要等到具体 section 行为发生。
-      page_view = create_event!(site, page, "page_view", visitor_id, source, device, occurred_at, nil, metadata: { simulated: true, assigned_variants: })
+      broadcast_experiment_metrics(site, experiments, index)
       Analytics::AggregationService.new(page_view).call
 
       next unless rand < 0.42
@@ -65,7 +70,7 @@ class TrafficSimulatorJob < ApplicationJob
 
   def visible_experiments(site)
     visible_uids = visible_section_uids(site)
-    site.experiments.active.includes(:variants, :section).select do |experiment|
+    site.experiments.active.includes(:variants, :section).order(:id).select do |experiment|
       experiment.section && visible_uids.include?(experiment.section.uid)
     end
   end

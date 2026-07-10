@@ -135,9 +135,8 @@ RSpec.describe Analytics::AggregationService do
     assignments = experiment.assignments
     allow(experiment).to receive(:assignments).and_return(assignments)
     allow(event).to receive(:experiment).and_return(experiment)
-    allow(assignments).to receive(:find_by).with(visitor_id: "visitor-race").and_return(nil)
+    allow(assignments).to receive(:find_by).with(visitor_id: "visitor-race").and_return(nil, assignment)
     allow(assignments).to receive(:create_or_find_by!).and_raise(ActiveRecord::RecordNotUnique)
-    allow(assignments).to receive(:find_by!).with(visitor_id: "visitor-race").and_return(assignment)
 
     described_class.new(event).call
 
@@ -220,6 +219,35 @@ RSpec.describe Analytics::AggregationService do
     assignment = experiment.assignments.find_by!(visitor_id: "visitor-explicit-exposure")
     expect(assignment.variant).to eq(variant)
     expect(assignment.conversions.where(event:).count).to eq(1)
+  end
+
+  it "does not fail aggregation when explicit assignment reports a variant conflict" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    experiment = create(:experiment, site:, section:, primary_goal: "form_submit")
+    variant = create(:variant, experiment:, key: "variant", name: "Variant")
+    event = site.events.create!(
+      event_type: "form_submit",
+      visitor_id: "visitor-cross-variant",
+      source: "direct",
+      device: "desktop",
+      experiment:,
+      variant:,
+      variant_key: variant.key,
+      occurred_at: Time.current
+    )
+    allow_any_instance_of(Experiments::AssignmentService)
+      .to receive(:assign)
+      .and_raise(Experiments::AssignmentService::VariantConflict)
+
+    expect do
+      described_class.new(event).call
+    end.not_to raise_error
+
+    expect(event.reload.aggregated_at).to be_present
+    expect(experiment.assignments).to be_empty
+    expect(experiment.conversions).to be_empty
   end
 
   it "does not fall back to generic attribution when only experiment is present" do

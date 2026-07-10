@@ -19,17 +19,21 @@ module Public
       form_id = params[:form_id].presence
       product_key = params[:product_key].presence
       # 带区块标识的交互事件必须确认区块仍在正式页面中，否则外部请求能给草稿实验刷出访客。
-      assignment = assignment_for_section_uid(site, section_uid, require_visible: section_uid.present?)
-      event = record_public_event!(
-        site:,
-        page: site.home_page,
-        event_type:,
-        metadata: metadata_params,
-        assignment:,
-        section_uid:,
-        form_id:,
-        product_key:
-      )
+      event = ActiveRecord::Base.transaction do
+        assignment = assignment_for_section_uid(site, section_uid, require_visible: section_uid.present?)
+        record_public_event!(
+          site:,
+          page: site.home_page,
+          event_type:,
+          metadata: metadata_params,
+          assignment:,
+          section_uid:,
+          form_id:,
+          product_key:,
+          enqueue: false
+        )
+      end
+      enqueue_public_event!(event)
       render json: { id: event.id, status: "accepted" }, status: :accepted
     rescue ActiveRecord::RecordInvalid => error
       render json: { error: "事件未通过校验" }, status: :unprocessable_content

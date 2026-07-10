@@ -15,6 +15,7 @@ module Experiments
         @experiment.with_lock do
           @experiment.reload
           return nil unless @experiment.status == "active"
+          validate_requested_variant!(variant)
 
           existing = @experiment.assignments.find_by(visitor_id:)
           return matching_assignment(existing, variant) if existing
@@ -28,14 +29,37 @@ module Experiments
             @experiment.assignments.create_or_find_by!(visitor_id:) do |assignment|
               assignment.variant = selected_variant
             end
-          rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
-            matching_assignment(@experiment.assignments.find_by!(visitor_id:), variant)
+          rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => error
+            recover_unique_assignment(error, visitor_id, variant)
           end
         end
       end
     end
 
     private
+
+    def validate_requested_variant!(requested_variant)
+      return unless requested_variant
+      return if requested_variant.experiment_id == @experiment.id
+
+      raise VariantConflict, "requested variant belongs to another experiment"
+    end
+
+    def recover_unique_assignment(error, visitor_id, requested_variant)
+      if error.is_a?(ActiveRecord::RecordInvalid) && !visitor_uniqueness_error?(error)
+        raise error
+      end
+
+      assignment = @experiment.assignments.find_by(visitor_id:)
+      raise error unless assignment
+
+      matching_assignment(assignment, requested_variant)
+    end
+
+    def visitor_uniqueness_error?(error)
+      details = error.record.errors.details
+      details.keys == [ :visitor_id ] && details.fetch(:visitor_id).all? { |detail| detail.fetch(:error) == :taken }
+    end
 
     def matching_assignment(assignment, requested_variant)
       if requested_variant && assignment.variant_id != requested_variant.id

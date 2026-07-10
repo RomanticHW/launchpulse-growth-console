@@ -22,8 +22,10 @@ RSpec.describe TrafficSimulatorJob do
     create(:variant, experiment: contact_experiment, key: "contact", name: "Contact")
     Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
     assigned_visitors = []
+    assigned_experiment_ids = []
     allow_any_instance_of(Experiments::AssignmentService).to receive(:assign).and_wrap_original do |original, visitor_id|
       assigned_visitors << visitor_id
+      assigned_experiment_ids << original.receiver.instance_variable_get(:@experiment).id
       original.call(visitor_id)
     end
 
@@ -34,6 +36,7 @@ RSpec.describe TrafficSimulatorJob do
       a_string_matching(/\Asim-\d+-0\z/),
       a_string_matching(/\Asim-\d+-0\z/)
     )
+    expect(assigned_experiment_ids).to eq([ hero_experiment.id, contact_experiment.id ].sort)
     expect(page_view.experiment_id).to be_nil
     expect(page_view.variant_id).to be_nil
     expect(page_view.variant_key).not_to include(",") if page_view.variant_key.present?
@@ -75,6 +78,23 @@ RSpec.describe TrafficSimulatorJob do
     expect(page_view.metadata.fetch("assigned_variants")).to eq({})
     expect(page_view.experiment_id).to be_nil
     expect(experiment.assignments.count).to eq(0)
+  end
+
+  it "rolls back visitor assignments when the page view cannot be created" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:, kind: "hero")
+    experiment = create(:experiment, site:, section:)
+    create(:variant, experiment:, key: "variant", name: "Variant")
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    allow_any_instance_of(described_class).to receive(:create_event!).and_raise(ActiveRecord::RecordInvalid)
+
+    expect do
+      described_class.perform_now(site.id, visitors: 1)
+    end.to raise_error(ActiveRecord::RecordInvalid)
+
+    expect(experiment.assignments).to be_empty
+    expect(site.events).to be_empty
   end
 
   it "throttles experiment panel broadcasts during simulations" do

@@ -75,4 +75,66 @@ RSpec.describe Experiments::AssignmentService do
       described_class.new(experiment).assign("conflicting-visitor", variant: requested)
     end.to raise_error(described_class::VariantConflict)
   end
+
+  it "rejects an explicitly requested variant from another experiment" do
+    experiment = create(:experiment)
+    create(:variant, experiment:, key: "control", role: "control")
+    other_experiment = create(:experiment)
+    requested = create(:variant, experiment: other_experiment, key: "other", role: "variant")
+
+    expect do
+      described_class.new(experiment).assign("cross-experiment-visitor", variant: requested)
+    end.to raise_error(described_class::VariantConflict)
+  end
+
+  it "does not mask unrelated assignment validation failures during uniqueness recovery" do
+    experiment = create(:experiment)
+    create(:variant, experiment:, key: "variant")
+
+    expect do
+      described_class.new(experiment).assign(nil)
+    end.to raise_error(ActiveRecord::RecordInvalid) do |error|
+      expect(error.record.errors.of_kind?(:visitor_id, :blank)).to be(true)
+    end
+  end
+
+  it "recovers an existing assignment from a visitor uniqueness validation race" do
+    experiment = create(:experiment)
+    variant = create(:variant, experiment:, key: "variant")
+    existing = experiment.assignments.create!(visitor_id: "uniqueness-race-visitor", variant:)
+    assignments = experiment.assignments
+    invalid_assignment = Assignment.new(experiment:, variant:, visitor_id: existing.visitor_id)
+    invalid_assignment.validate
+    uniqueness_error = ActiveRecord::RecordInvalid.new(invalid_assignment)
+    allow(experiment).to receive(:assignments).and_return(assignments)
+    allow(assignments).to receive(:find_by)
+      .with(visitor_id: existing.visitor_id)
+      .and_return(nil, existing)
+    allow(assignments).to receive(:create_or_find_by!).and_raise(uniqueness_error)
+
+    assignment = described_class.new(experiment).assign(existing.visitor_id)
+
+    expect(assignment).to eq(existing)
+  end
+
+  it "does not recover a uniqueness validation race that also has another validation error" do
+    experiment = create(:experiment)
+    variant = create(:variant, experiment:, key: "variant")
+    existing = experiment.assignments.create!(visitor_id: "mixed-error-visitor", variant:)
+    other_experiment = create(:experiment)
+    other_variant = create(:variant, experiment: other_experiment, key: "other")
+    assignments = experiment.assignments
+    invalid_assignment = Assignment.new(experiment:, variant: other_variant, visitor_id: existing.visitor_id)
+    invalid_assignment.validate
+    validation_error = ActiveRecord::RecordInvalid.new(invalid_assignment)
+    allow(experiment).to receive(:assignments).and_return(assignments)
+    allow(assignments).to receive(:find_by)
+      .with(visitor_id: existing.visitor_id)
+      .and_return(nil, existing)
+    allow(assignments).to receive(:create_or_find_by!).and_raise(validation_error)
+
+    expect do
+      described_class.new(experiment).assign(existing.visitor_id)
+    end.to raise_error(validation_error)
+  end
 end

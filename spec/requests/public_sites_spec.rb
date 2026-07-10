@@ -85,6 +85,28 @@ RSpec.describe "Public sites" do
     expect(experiment.assignments.count).to eq(1)
   end
 
+  it "locks public-page experiments in id order" do
+    site = create(:site, slug: "ordered-assignment-demo", status: "published")
+    page = create(:page, site:)
+    sections = 3.times.map { |index| create(:section, page:, position: index) }
+    experiments = sections.map { |section| create(:experiment, site:, section:) }
+    experiments.each_with_index { |experiment, index| create(:variant, experiment:, key: "variant-#{index}") }
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    locked_experiment_ids = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
+      next unless payload[:sql].include?('FROM "experiments"') && payload[:sql].include?("FOR UPDATE")
+
+      locked_experiment_ids << payload[:binds].first.value
+    end
+
+    get "/s/ordered-assignment-demo"
+
+    expect(response).to have_http_status(:ok)
+    expect(locked_experiment_ids).to eq(experiments.map(&:id).sort)
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
   it "renders published props when an active experiment closes before assignment" do
     site = create(:site, slug: "closed-during-public-assignment", status: "published")
     page = create(:page, site:)
@@ -150,6 +172,26 @@ RSpec.describe "Public sites" do
     expect(event.experiment_id).to be_nil
     expect(event.variant_id).to be_nil
     expect(event.metadata.fetch("assigned_variants")).to include(experiment.id.to_s)
+  end
+
+  it "rolls back page-view assignments when the public page event cannot be created" do
+    site = create(:site, slug: "page-view-rollback-demo", status: "published")
+    page = create(:page, site:)
+    section = create(:section, page:, kind: "hero")
+    experiment = create(:experiment, site:, section:)
+    create(:variant, experiment:, key: "variant", name: "Variant")
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    invalid_event = Event.new
+    invalid_event.errors.add(:base, "event failed")
+    allow_any_instance_of(Public::SitesController)
+      .to receive(:record_public_event!)
+      .and_raise(ActiveRecord::RecordInvalid.new(invalid_event))
+
+    get "/s/page-view-rollback-demo"
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(experiment.assignments).to be_empty
+    expect(site.events).to be_empty
   end
 
   it "broadcasts experiment metrics after public page-view assignments" do
@@ -399,6 +441,26 @@ RSpec.describe "Public sites" do
     expect(response).to have_http_status(:accepted)
     expect(site.events.last.experiment).to eq(hero_experiment)
     expect(site.events.last.variant_key).to eq("hero")
+  end
+
+  it "rolls back a section assignment when the public event cannot be created" do
+    site = create(:site, slug: "section-event-rollback-demo", status: "published")
+    page = create(:page, site:)
+    section = create(:section, page:, kind: "hero")
+    experiment = create(:experiment, site:, section:)
+    create(:variant, experiment:, key: "variant", name: "Variant")
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    invalid_event = Event.new
+    invalid_event.errors.add(:base, "event failed")
+    allow_any_instance_of(Public::EventsController)
+      .to receive(:record_public_event!)
+      .and_raise(ActiveRecord::RecordInvalid.new(invalid_event))
+
+    post "/s/section-event-rollback-demo/events", params: { event_type: "cta_click", section_uid: section.uid }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(experiment.assignments).to be_empty
+    expect(site.events).to be_empty
   end
 
   it "reuses a historical assignment when an active experiment closes during public attribution" do

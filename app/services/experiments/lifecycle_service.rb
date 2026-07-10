@@ -46,16 +46,20 @@ module Experiments
     end
 
     def pause!(experiment:, user:, account:)
-      experiment.with_lock do
-        require_status!(experiment, "active", action: "pause")
-        transition!(experiment:, status: "paused", user:, account:, action: "experiment_paused")
+      experiment.site.with_lock do
+        experiment.with_lock do
+          require_status!(experiment, "active", action: "pause")
+          transition!(experiment:, status: "paused", user:, account:, action: "experiment_paused")
+        end
       end
     end
 
     def resume!(experiment:, user:, account:)
-      experiment.with_lock do
-        require_status!(experiment, "paused", action: "resume")
-        transition!(experiment:, status: "active", user:, account:, action: "experiment_resumed", ended_at: nil)
+      experiment.site.with_lock do
+        experiment.with_lock do
+          require_status!(experiment, "paused", action: "resume")
+          transition!(experiment:, status: "active", user:, account:, action: "experiment_resumed", ended_at: nil)
+        end
       end
     end
 

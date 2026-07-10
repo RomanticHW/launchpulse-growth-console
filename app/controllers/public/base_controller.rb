@@ -71,7 +71,7 @@ module Public
     end
 
     def assignment_map(site, visible_section_uids: nil)
-      site.experiments.active.includes(:variants, :section).each_with_object({}) do |experiment, result|
+      site.experiments.active.includes(:variants, :section).order(:id).each_with_object({}) do |experiment, result|
         next unless experiment.section
         # 公开运行时只认已发布快照里的区块。草稿区块即使有实验，也不能污染真实访客数据。
         next if visible_section_uids && !visible_section_uids.include?(experiment.section.uid)

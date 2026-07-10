@@ -644,6 +644,30 @@ RSpec.describe "Event API" do
     expect(response).to have_http_status(:unprocessable_content)
   end
 
+  it "maps explicit assignment variant conflicts to a validation response" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    experiment = create(:experiment, site:, section:)
+    variant = create(:variant, experiment:, key: "recommended", name: "Recommended")
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    allow_any_instance_of(Experiments::AssignmentService)
+      .to receive(:assign)
+      .and_raise(Experiments::AssignmentService::VariantConflict)
+
+    post "/api/v1/events", params: {
+      site_token: signed_token_for(site),
+      event_type: "cta_click",
+      visitor_id: "visitor-cross-variant",
+      experiment_id: experiment.id,
+      variant_key: variant.key
+    }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(JSON.parse(response.body).fetch("error")).to match(/assignment conflicts with variant_key/i)
+    expect(site.events).to be_empty
+  end
+
   it "rejects experiment attribution from another site" do
     site = create(:site)
     other_site = create(:site)
