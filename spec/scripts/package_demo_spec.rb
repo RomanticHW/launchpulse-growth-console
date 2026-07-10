@@ -1,4 +1,6 @@
+require "digest"
 require "fileutils"
+require "json"
 require "open3"
 require "pathname"
 require "tmpdir"
@@ -22,13 +24,17 @@ RSpec.describe "bin/package-demo" do
     FileUtils.mkdir_p(repository.join("bin"))
     FileUtils.mkdir_p(repository.join("docs/superpowers"))
     FileUtils.cp(source_root.join("bin/package-demo"), repository.join("bin/package-demo"))
+    helper = source_root.join("bin/package_demo.py")
+    FileUtils.cp(helper, repository.join("bin/package_demo.py")) if helper.exist?
     FileUtils.cp(source_root.join("docs/demo-guide.md"), repository.join("docs/demo-guide.md"))
     File.write(repository.join("docs/superpowers/process-note.md"), "internal process note")
     File.write(repository.join(".gitignore"), ".env.local\n*.pem\n")
     git(repository, "init", "--quiet")
     git(repository, "config", "user.email", "package-demo@example.test")
     git(repository, "config", "user.name", "Package Demo Test")
-    git(repository, "add", ".gitignore", "bin/package-demo", "docs/demo-guide.md")
+    tracked = [ ".gitignore", "bin/package-demo", "docs/demo-guide.md" ]
+    tracked << "bin/package_demo.py" if helper.exist?
+    git(repository, "add", *tracked)
     git(repository, "commit", "--quiet", "-m", "Create package fixture")
 
     case git_shape
@@ -53,15 +59,54 @@ RSpec.describe "bin/package-demo" do
 
   def create_zip(path, *entries)
     script = <<~PYTHON
+      import hashlib
+      import json
       import sys
       import zipfile
 
       with zipfile.ZipFile(sys.argv[1], "w") as archive:
           for name in sys.argv[2:]:
               archive.writestr(name, "metadata")
+          files = []
+          for name in dict.fromkeys(sys.argv[2:]):
+              if name == ".delivery-manifest.json":
+                  continue
+              files.append({"path": name, "sha256": hashlib.sha256(b"metadata").hexdigest()})
+          manifest = {"version": 1, "files": files}
+          archive.writestr(".delivery-manifest.json", json.dumps(manifest))
     PYTHON
     stdout, stderr, status = Open3.capture3("python3", "-c", script, path.to_s, *entries)
     expect(status).to be_success, -> { "Could not create test package:\n#{stdout}\n#{stderr}" }
+  end
+
+  def create_manifest_zip(path, entries:, manifest:, manifest_count: 1)
+    fixture = {
+      "entries" => entries,
+      "manifest" => manifest,
+      "manifest_count" => manifest_count
+    }
+    script = <<~PYTHON
+      import json
+      import stat
+      import sys
+      import zipfile
+
+      fixture = json.load(sys.stdin)
+      with zipfile.ZipFile(sys.argv[1], "w") as archive:
+          for entry in fixture["entries"]:
+              info = zipfile.ZipInfo(entry["path"])
+              if entry.get("symlink"):
+                  info.create_system = 3
+                  info.external_attr = (stat.S_IFLNK | 0o777) << 16
+              archive.writestr(info, entry.get("content", "fixture"))
+          data = json.dumps(fixture["manifest"])
+          for _index in range(fixture["manifest_count"]):
+              archive.writestr(".delivery-manifest.json", data)
+    PYTHON
+    stdout, stderr, status = Open3.capture3(
+      "python3", "-c", script, path.to_s, stdin_data: JSON.generate(fixture)
+    )
+    expect(status).to be_success, -> { "Could not create manifest fixture:\n#{stdout}\n#{stderr}" }
   end
 
   def zip_entries(path)
@@ -90,6 +135,25 @@ RSpec.describe "bin/package-demo" do
     stdout
   end
 
+  def extract_zip(path, destination)
+    script = <<~PYTHON
+      import pathlib
+      import sys
+      import zipfile
+
+      destination = pathlib.Path(sys.argv[2])
+      destination.mkdir(parents=True, exist_ok=True)
+      with zipfile.ZipFile(sys.argv[1]) as archive:
+          archive.extractall(destination)
+    PYTHON
+    stdout, stderr, status = Open3.capture3("python3", "-c", script, path.to_s, destination.to_s)
+    expect(status).to be_success, -> { "Could not extract package:\n#{stdout}\n#{stderr}" }
+  end
+
+  def delivery_manifest(path)
+    JSON.parse(zip_content(path, ".delivery-manifest.json"))
+  end
+
   def track(checkout, relative_path, content, force: false)
     path = checkout.join(relative_path)
     FileUtils.mkdir_p(path.dirname)
@@ -115,16 +179,14 @@ RSpec.describe "bin/package-demo" do
     message
   end
 
-  def package_verifier(source_root)
-    source = File.read(source_root.join("bin/package-demo"))
-    match = source.match(/python3 - "\$(?:OUTPUT|TEMP_OUTPUT)" <<'PY'\n(?<script>.*?)\nPY\n/m)
-    raise "Package verifier was not found" unless match
-
-    match[:script]
-  end
-
   def verify_package(source_root, path)
-    Open3.capture3("python3", "-", path.to_s, stdin_data: package_verifier(source_root))
+    Open3.capture3(
+      "python3",
+      source_root.join("bin/package_demo.py").to_s,
+      "verify",
+      "--archive",
+      path.to_s
+    )
   end
 
   it "keeps public documentation in the delivery package" do
@@ -171,17 +233,150 @@ RSpec.describe "bin/package-demo" do
 
       expect(status).to be_success, -> { "Package failed:\n#{stdout}\n#{stderr}" }
       expect(zip_content(output, "docs/demo-guide.md")).to eq("modified working-tree documentation")
+      manifest_entry = delivery_manifest(output).fetch("files").find do |entry|
+        entry.fetch("path") == "docs/demo-guide.md"
+      end
+      expect(manifest_entry.fetch("sha256")).to eq(Digest::SHA256.hexdigest("modified working-tree documentation"))
+    end
+  end
+
+  it "embeds a root delivery manifest without a self entry" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :directory)
+      output = Pathname(tmpdir).join("launchpulse-demo.zip")
+
+      stdout, stderr, status = run_package(checkout, output)
+
+      expect(status).to be_success, -> { "Package failed:\n#{stdout}\n#{stderr}" }
+      manifest = delivery_manifest(output)
+      paths = manifest.fetch("files").map { |entry| entry.fetch("path") }
+      expect(manifest.fetch("version")).to eq(1)
+      expect(paths).to contain_exactly(*git(checkout, "ls-files", "--cached").lines(chomp: true))
+      expect(paths).not_to include(".delivery-manifest.json")
+      expect(zip_entries(output)).to contain_exactly(*paths, ".delivery-manifest.json")
+    end
+  end
+
+  it "repackages an unpacked delivery tree without Git metadata" do
+    Dir.mktmpdir("package-demo-roundtrip") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :file)
+      first_output = Pathname(tmpdir).join("first.zip")
+      unpacked = Pathname(tmpdir).join("unpacked")
+      second_output = Pathname(tmpdir).join("second.zip")
+      first_stdout, first_stderr, first_status = run_package(checkout, first_output)
+      expect(first_status).to be_success, -> { "Package failed:\n#{first_stdout}\n#{first_stderr}" }
+      extract_zip(first_output, unpacked)
+
+      stdout, stderr, status = run_package(unpacked, second_output)
+
+      expect(status).to be_success, -> { "Repackage failed:\n#{stdout}\n#{stderr}" }
+      expect(delivery_manifest(second_output)).to eq(delivery_manifest(first_output))
+      expect(zip_entries(second_output)).to eq(zip_entries(second_output).uniq)
+      verify_stdout, verify_stderr, verify_status = verify_package(project_root, second_output)
+      expect(verify_status).to be_success, -> { "Verification failed:\n#{verify_stdout}\n#{verify_stderr}" }
+    end
+  end
+
+  it "rejects a modified source in a non-Git delivery tree" do
+    Dir.mktmpdir("package-demo-roundtrip") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :file)
+      first_output = Pathname(tmpdir).join("first.zip")
+      unpacked = Pathname(tmpdir).join("unpacked")
+      second_output = Pathname(tmpdir).join("second.zip")
+      _stdout, _stderr, status = run_package(checkout, first_output)
+      expect(status).to be_success
+      extract_zip(first_output, unpacked)
+      secret = "MODIFIED_CONTENT_MUST_NOT_BE_PRINTED"
+      File.binwrite(unpacked.join("docs/demo-guide.md"), secret)
+
+      message = expect_failed_package(unpacked, second_output, "docs/demo-guide.md")
+
+      expect(message).not_to include(secret)
+    end
+  end
+
+  it "rejects a missing source in a non-Git delivery tree" do
+    Dir.mktmpdir("package-demo-roundtrip") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :file)
+      first_output = Pathname(tmpdir).join("first.zip")
+      unpacked = Pathname(tmpdir).join("unpacked")
+      second_output = Pathname(tmpdir).join("second.zip")
+      _stdout, _stderr, status = run_package(checkout, first_output)
+      expect(status).to be_success
+      extract_zip(first_output, unpacked)
+      FileUtils.rm(unpacked.join("docs/demo-guide.md"))
+
+      expect_failed_package(unpacked, second_output, "docs/demo-guide.md")
+    end
+  end
+
+  it "ignores extra ordinary files in a non-Git delivery tree" do
+    Dir.mktmpdir("package-demo-roundtrip") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :file)
+      first_output = Pathname(tmpdir).join("first.zip")
+      unpacked = Pathname(tmpdir).join("unpacked")
+      second_output = Pathname(tmpdir).join("second.zip")
+      _stdout, _stderr, status = run_package(checkout, first_output)
+      expect(status).to be_success
+      extract_zip(first_output, unpacked)
+      File.binwrite(unpacked.join("ordinary-extra.txt"), "not part of the delivery source")
+
+      stdout, stderr, second_status = run_package(unpacked, second_output)
+
+      expect(second_status).to be_success, -> { "Repackage failed:\n#{stdout}\n#{stderr}" }
+      expect(zip_entries(second_output)).not_to include("ordinary-extra.txt")
+      expect(delivery_manifest(second_output)).to eq(delivery_manifest(first_output))
+    end
+  end
+
+  it "uses the delivery manifest when a non-Git root is nested in a parent repository" do
+    Dir.mktmpdir("package-demo-parent-repository") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :file)
+      first_output = Pathname(tmpdir).join("first.zip")
+      _stdout, _stderr, status = run_package(checkout, first_output)
+      expect(status).to be_success
+      parent = Pathname(tmpdir).join("parent")
+      unpacked = parent.join("delivery")
+      extract_zip(first_output, unpacked)
+      File.binwrite(unpacked.join("parent-only.txt"), "tracked only by the parent repository")
+      git(parent, "init", "--quiet")
+      git(parent, "config", "user.email", "package-demo@example.test")
+      git(parent, "config", "user.name", "Package Demo Test")
+      git(parent, "add", "-f", ".")
+      git(parent, "commit", "--quiet", "-m", "Track parent fixture")
+      second_output = Pathname(tmpdir).join("second.zip")
+
+      stdout, stderr, second_status = run_package(unpacked, second_output)
+
+      expect(second_status).to be_success, -> { "Repackage failed:\n#{stdout}\n#{stderr}" }
+      expect(zip_entries(second_output)).not_to include("parent-only.txt")
+      expect(delivery_manifest(second_output)).to eq(delivery_manifest(first_output))
+    end
+  end
+
+  it "rejects a tracked delivery manifest reserved path" do
+    Dir.mktmpdir("package-demo-reserved") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :directory)
+      output = Pathname(tmpdir).join("launchpulse-demo.zip")
+      track(checkout, ".delivery-manifest.json", "{}", force: true)
+
+      expect_failed_package(checkout, output, ".delivery-manifest.json")
     end
   end
 
   [
     ".env",
+    ".envrc",
     "nested/.env.production",
+    "nested/.ENV.production",
     "config/master.key",
     "config/demo.key",
+    "config/tls/server.KEY",
     "config/credentials/production.key",
     "cert.pem",
+    "cert.PEM",
     "client.p12",
+    "client.P12",
     "client.pfx"
   ].each do |blocked_path|
     it "rejects the forcibly tracked secret #{blocked_path}" do
@@ -238,24 +433,18 @@ RSpec.describe "bin/package-demo" do
       track(checkout, "safe/payload.txt", "tracked payload")
       FileUtils.mkdir_p(Pathname(tmpdir).join("outside"))
       File.binwrite(Pathname(tmpdir).join("outside/payload.txt"), external_secret)
-      script_path = checkout.join("bin/package-demo")
+      script_path = checkout.join("bin/package_demo.py")
       script = File.read(script_path)
-      archive_open = %(with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:)
-      expect(script).to include(archive_open)
-      directory_swap = <<~PYTHON
-        validated_file = validate_file
-
-        def validate_file(*arguments):
-            result = validated_file(*arguments)
-            relative = arguments[-2]
-            if relative == "safe/payload.txt" and result:
-                safe_directory = os.path.join(root, "safe")
-                os.rename(safe_directory, safe_directory + "-original")
-                os.symlink(os.path.join(os.path.dirname(root), "outside"), safe_directory)
-            return result
-
-      PYTHON
-      File.write(script_path, script.sub(archive_open, directory_swap + archive_open))
+      secure_open = "    try:\n        file_fd, metadata = open_regular(root_fd, path)"
+      expect(script).to include(secure_open)
+      directory_swap = [
+        %(    if relative == "safe/payload.txt":),
+        %(        safe_directory = #{JSON.generate(checkout.join("safe").to_s)}),
+        %(        os.rename(safe_directory, safe_directory + "-original")),
+        %(        os.symlink(#{JSON.generate(Pathname(tmpdir).join("outside").to_s)}, safe_directory)),
+        ""
+      ].join("\n")
+      File.write(script_path, script.sub(secure_open, directory_swap + secure_open))
       File.binwrite(output, "stale package")
 
       stdout, stderr, status = run_package(checkout, output)
@@ -326,7 +515,7 @@ RSpec.describe "bin/package-demo" do
       _stdout, stderr, status = verify_package(project_root, package)
 
       expect(status).not_to be_success
-      expect(stderr).to include("Unexpected local artifacts in package: .git/, .git/config")
+      expect(stderr).to include("Unsafe package entry")
     end
   end
 
@@ -338,7 +527,7 @@ RSpec.describe "bin/package-demo" do
       _stdout, stderr, status = verify_package(project_root, package)
 
       expect(status).not_to be_success
-      expect(stderr).to include("Unexpected local artifacts in package: .git")
+      expect(stderr).to include(".git")
     end
   end
 
@@ -350,7 +539,7 @@ RSpec.describe "bin/package-demo" do
       _stdout, stderr, status = verify_package(project_root, package)
 
       expect(status).not_to be_success
-      expect(stderr).to include("Unexpected local artifacts in package: docs/superpowers/process-note.md")
+      expect(stderr).to include("docs/superpowers/process-note.md")
     end
   end
 
@@ -359,20 +548,23 @@ RSpec.describe "bin/package-demo" do
       package = Pathname(tmpdir).join("injected-secrets.zip")
       secrets = [
         ".env",
+        ".envrc",
         "nested/.env.production",
+        "nested/.ENV.production",
         "config/master.key",
         "config/demo.key",
+        "config/tls/server.KEY",
         "config/credentials/production.key",
         "CERT.PEM",
         "client.P12",
         "client.pfx"
       ]
-      create_zip(package, *secrets)
-
-      _stdout, stderr, status = verify_package(project_root, package)
-
-      expect(status).not_to be_success
-      secrets.each { |path| expect(stderr).to include(path) }
+      secrets.each do |path|
+        create_zip(package, path)
+        _stdout, stderr, status = verify_package(project_root, package)
+        expect(status).not_to be_success
+        expect(stderr).to include(path)
+      end
     end
   end
 
@@ -394,12 +586,12 @@ RSpec.describe "bin/package-demo" do
         "coverage/index.html",
         ".DS_Store"
       ]
-      create_zip(package, *blocked)
-
-      _stdout, stderr, status = verify_package(project_root, package)
-
-      expect(status).not_to be_success
-      blocked.each { |path| expect(stderr).to include(path) }
+      blocked.each do |path|
+        create_zip(package, path)
+        _stdout, stderr, status = verify_package(project_root, package)
+        expect(status).not_to be_success
+        expect(stderr).to include(path)
+      end
     end
   end
 
@@ -412,6 +604,147 @@ RSpec.describe "bin/package-demo" do
 
       expect(status).not_to be_success
       expect(stderr).to include("duplicate.txt")
+    end
+  end
+
+  it "requires exactly one root delivery manifest" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("missing-manifest.zip")
+      create_manifest_zip(package, entries: [], manifest: { "version" => 1, "files" => [] }, manifest_count: 0)
+      _stdout, stderr, status = verify_package(project_root, package)
+      expect(status).not_to be_success
+      expect(stderr).to include("exactly once")
+
+      create_manifest_zip(package, entries: [], manifest: { "version" => 1, "files" => [] }, manifest_count: 2)
+      _stdout, stderr, status = verify_package(project_root, package)
+      expect(status).not_to be_success
+      expect(stderr).to include("exactly once")
+    end
+  end
+
+  it "rejects duplicate paths in the delivery manifest" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("duplicate-manifest-path.zip")
+      digest = Digest::SHA256.hexdigest("fixture")
+      file = { "path" => "docs/demo.txt", "sha256" => digest }
+      create_manifest_zip(
+        package,
+        entries: [ { "path" => "docs/demo.txt", "content" => "fixture" } ],
+        manifest: { "version" => 1, "files" => [ file, file ] }
+      )
+
+      _stdout, stderr, status = verify_package(project_root, package)
+
+      expect(status).not_to be_success
+      expect(stderr).to include("Duplicate manifest path: docs/demo.txt")
+    end
+  end
+
+  it "rejects missing and extra ZIP entries relative to the delivery manifest" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("entry-set-mismatch.zip")
+      digest = Digest::SHA256.hexdigest("fixture")
+      create_manifest_zip(
+        package,
+        entries: [],
+        manifest: { "version" => 1, "files" => [ { "path" => "missing.txt", "sha256" => digest } ] }
+      )
+      _stdout, missing_stderr, missing_status = verify_package(project_root, package)
+      expect(missing_status).not_to be_success
+      expect(missing_stderr).to include("Missing package entry: missing.txt")
+
+      create_manifest_zip(
+        package,
+        entries: [ { "path" => "extra.txt", "content" => "fixture" } ],
+        manifest: { "version" => 1, "files" => [] }
+      )
+      _stdout, extra_stderr, extra_status = verify_package(project_root, package)
+      expect(extra_status).not_to be_success
+      expect(extra_stderr).to include("Extra package entry: extra.txt")
+    end
+  end
+
+  it "rejects traversal and reserved paths in the delivery manifest" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("unsafe-manifest-path.zip")
+      digest = Digest::SHA256.hexdigest("fixture")
+      [ "../outside.txt", ".delivery-manifest.json" ].each do |path|
+        create_manifest_zip(
+          package,
+          entries: [],
+          manifest: { "version" => 1, "files" => [ { "path" => path, "sha256" => digest } ] }
+        )
+        _stdout, _stderr, status = verify_package(project_root, package)
+        expect(status).not_to be_success
+      end
+    end
+  end
+
+  it "rejects a blocked nested secret in the delivery manifest without printing its content" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("blocked-manifest-path.zip")
+      path = "config/tls/server.KEY"
+      secret = "NESTED_SECRET_MUST_NOT_BE_PRINTED"
+      create_manifest_zip(
+        package,
+        entries: [ { "path" => path, "content" => secret } ],
+        manifest: {
+          "version" => 1,
+          "files" => [ { "path" => path, "sha256" => Digest::SHA256.hexdigest(secret) } ]
+        }
+      )
+
+      _stdout, stderr, status = verify_package(project_root, package)
+
+      expect(status).not_to be_success
+      expect(stderr).to include(path)
+      expect(stderr).not_to include(secret)
+    end
+  end
+
+  it "rejects invalid and mismatched manifest hashes" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("invalid-manifest-hash.zip")
+      entries = [ { "path" => "docs/demo.txt", "content" => "fixture" } ]
+      create_manifest_zip(
+        package,
+        entries:,
+        manifest: { "version" => 1, "files" => [ { "path" => "docs/demo.txt", "sha256" => "z" * 64 } ] }
+      )
+      _stdout, invalid_stderr, invalid_status = verify_package(project_root, package)
+      expect(invalid_status).not_to be_success
+      expect(invalid_stderr).to include("Invalid manifest hash: docs/demo.txt")
+
+      create_manifest_zip(
+        package,
+        entries:,
+        manifest: {
+          "version" => 1,
+          "files" => [ { "path" => "docs/demo.txt", "sha256" => Digest::SHA256.hexdigest("different") } ]
+        }
+      )
+      _stdout, mismatch_stderr, mismatch_status = verify_package(project_root, package)
+      expect(mismatch_status).not_to be_success
+      expect(mismatch_stderr).to include("Package hash mismatch: docs/demo.txt")
+    end
+  end
+
+  it "rejects a symlink ZIP entry named by the delivery manifest" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("symlink-entry.zip")
+      create_manifest_zip(
+        package,
+        entries: [ { "path" => "linked.txt", "content" => "target.txt", "symlink" => true } ],
+        manifest: {
+          "version" => 1,
+          "files" => [ { "path" => "linked.txt", "sha256" => Digest::SHA256.hexdigest("target.txt") } ]
+        }
+      )
+
+      _stdout, stderr, status = verify_package(project_root, package)
+
+      expect(status).not_to be_success
+      expect(stderr).to include("Symlink package entry: linked.txt")
     end
   end
 
