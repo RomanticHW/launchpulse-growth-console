@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "digest"
+
 class Rack::Attack
   ### Configure Cache ###
   # Uses Rails.cache; Solid Cache in production.
@@ -23,7 +25,7 @@ class Rack::Attack
     next unless req.path == "/api/v1/events" && req.post?
 
     token = req.params["site_token"].presence || req.get_header("HTTP_X_SITE_TOKEN")
-    token.presence
+    Digest::SHA256.hexdigest(token) if token.present?
   end
 
   throttle("public_forms/ip", limit: 30, period: 1.minute) do |req|

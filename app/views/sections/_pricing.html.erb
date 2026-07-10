@@ -17,7 +17,7 @@
           <%= button_to "选择方案",
             public_site_plan_checkout_path(public_site.slug, plan_key:),
             method: :post,
-            params: { section_uid: section.uid },
+            params: { section_uid: section.uid, request_token: SecureRandom.uuid },
             aria: { label: "选择 #{plan["name"]} 方案" },
             class: "mt-5 w-full rounded-[var(--radius-control)] px-3 py-2 text-sm font-semibold transition active:translate-y-px",
             style: "background: var(--site-accent); color: var(--site-on-accent);" %>

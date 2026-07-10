@@ -12,11 +12,13 @@ module Public
       # 商品结账必须归到真正展示该商品的 product_grid，不能让 hero/faq 等区块伪造订单归因。
       return render plain: "该商品暂不可购买", status: :unprocessable_content unless section&.kind == "product_grid"
       return render plain: "商品不存在", status: :not_found unless product_key_allowed_in_section?(section, params[:product_key].to_s)
+      request_token = validated_request_token
+      return redirect_after_checkout(site) if find_order_by_request_token(site, request_token)
 
       assignment = assignment_for_section_uid(site, section_uid, require_visible: true)
       events = []
       ActiveRecord::Base.transaction do
-        order = create_product_order!(site, product)
+        order = create_product_order!(site, product, request_token:)
         # 订单和两条转化事件必须同生共死，否则后台会出现“有订单、无漏斗事件”的断层。
         events << record_public_event!(
           site:,
@@ -41,10 +43,14 @@ module Public
       end
       events.each { |event| enqueue_public_event!(event) }
 
-      redirect_to public_site_path(site.slug, ordered: 1)
+      redirect_after_checkout(site)
+    rescue ActiveRecord::RecordNotUnique
+      raise unless request_token && site && find_order_by_request_token(site, request_token)
+
+      redirect_after_checkout(site)
     rescue ActiveRecord::RecordInvalid => error
       render plain: "订单创建失败，请稍后重试", status: :unprocessable_content
-    rescue Events::MetadataSanitizer::InvalidMetadata, HiddenSectionError => error
+    rescue Events::MetadataSanitizer::InvalidMetadata, HiddenSectionError, InvalidRequestToken => error
       render plain: error.message, status: :unprocessable_content
     end
 
@@ -58,11 +64,13 @@ module Public
       return render plain: "该方案暂不可选择", status: :unprocessable_content unless section&.kind == "pricing"
       plan = pricing_plan_for(site, section_uid, params[:plan_key].to_s)
       return render plain: "方案不存在", status: :not_found unless plan
+      request_token = validated_request_token
+      return redirect_after_checkout(site) if find_order_by_request_token(site, request_token)
 
       assignment = assignment_for_section_uid(site, section_uid, require_visible: true)
       events = []
       ActiveRecord::Base.transaction do
-        order = create_plan_order!(site, plan)
+        order = create_plan_order!(site, plan, request_token:)
         events << record_public_event!(
           site:,
           page: site.home_page,
@@ -86,33 +94,49 @@ module Public
       end
       events.each { |event| enqueue_public_event!(event) }
 
-      redirect_to public_site_path(site.slug, ordered: 1)
+      redirect_after_checkout(site)
+    rescue ActiveRecord::RecordNotUnique
+      raise unless request_token && site && find_order_by_request_token(site, request_token)
+
+      redirect_after_checkout(site)
     rescue ActiveRecord::RecordInvalid => error
       render plain: "订单创建失败，请稍后重试", status: :unprocessable_content
-    rescue Events::MetadataSanitizer::InvalidMetadata, HiddenSectionError => error
+    rescue Events::MetadataSanitizer::InvalidMetadata, HiddenSectionError, InvalidRequestToken => error
       render plain: error.message, status: :unprocessable_content
     end
 
     private
 
-    def create_product_order!(site, product)
+    def create_product_order!(site, product, request_token:)
       order = site.orders.create!(
         number: "ORD-#{SecureRandom.hex(4).upcase}",
         email: params[:email].presence || "shopper@example.test",
         total: product.price,
-        source: "public_checkout"
+        source: "public_checkout",
+        request_token:
       )
       order.order_items.create!(product:, quantity: 1, unit_price: product.price)
       order
     end
 
-    def create_plan_order!(site, plan)
+    def create_plan_order!(site, plan, request_token:)
       site.orders.create!(
         number: "ORD-#{SecureRandom.hex(4).upcase}",
         email: params[:email].presence || "student@example.test",
         total: price_amount(plan["price"]),
-        source: "public_pricing_checkout"
+        source: "public_pricing_checkout",
+        request_token:
       )
+    end
+
+    def find_order_by_request_token(site, request_token)
+      return nil unless request_token
+
+      Order.find_by(site_id: site.id, request_token:)
+    end
+
+    def redirect_after_checkout(site)
+      redirect_to public_site_path(site.slug, ordered: 1)
     end
 
     def pricing_plan_for(site, section_uid, plan_key)

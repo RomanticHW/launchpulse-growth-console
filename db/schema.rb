@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_09_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_09_103000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -192,8 +192,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_100000) do
     t.datetime "created_at", null: false
     t.bigint "form_id", null: false
     t.jsonb "payload", default: {}, null: false
+    t.string "request_token"
     t.datetime "updated_at", null: false
     t.index ["contact_id"], name: "index_form_submissions_on_contact_id"
+    t.index ["form_id", "request_token"], name: "idx_form_submissions_unique_request_token", unique: true, where: "(request_token IS NOT NULL)"
     t.index ["form_id"], name: "index_form_submissions_on_form_id"
   end
 
@@ -233,11 +235,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_100000) do
     t.datetime "created_at", null: false
     t.string "email", null: false
     t.string "number", null: false
+    t.string "request_token"
     t.bigint "site_id", null: false
     t.string "source"
     t.decimal "total", precision: 10, scale: 2, default: "0.0", null: false
     t.datetime "updated_at", null: false
     t.index ["site_id", "number"], name: "index_orders_on_site_id_and_number", unique: true
+    t.index ["site_id", "request_token"], name: "idx_orders_unique_request_token", unique: true, where: "(request_token IS NOT NULL)"
     t.index ["site_id"], name: "index_orders_on_site_id"
   end
 

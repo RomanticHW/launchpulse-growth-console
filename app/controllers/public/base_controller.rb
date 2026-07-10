@@ -1,6 +1,8 @@
 module Public
   class BaseController < ActionController::Base
     HiddenSectionError = Class.new(StandardError)
+    InvalidRequestToken = Class.new(StandardError)
+    REQUEST_TOKEN_FORMAT = /\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/
     allow_browser versions: :modern
 
     private
@@ -38,6 +40,17 @@ module Public
 
     def find_site
       Site.find_by!(slug: params[:slug], status: "published")
+    end
+
+    def validated_request_token
+      raw_token = params[:request_token]
+      return nil if raw_token.blank?
+
+      unless raw_token.is_a?(String) && raw_token.length <= 100 && raw_token.match?(REQUEST_TOKEN_FORMAT)
+        raise InvalidRequestToken, "请求标识格式不正确"
+      end
+
+      raw_token
     end
 
     def assignment_map(site, visible_section_uids: nil)
