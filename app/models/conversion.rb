@@ -5,7 +5,7 @@ class Conversion < ApplicationRecord
   belongs_to :assignment
   belongs_to :event, optional: true
 
-  # 转化必须绑定同一访客在同一站点的行为，跨站或换访客都会让实验结果失真。
+  # 转化事件、访客分配和实验必须属于同一站点及访客。
   validates :conversion_type, presence: true
   validates :conversion_type, inclusion: { in: TYPES }
   validates :conversion_type, uniqueness: { scope: :assignment_id }

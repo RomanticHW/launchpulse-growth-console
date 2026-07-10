@@ -65,7 +65,7 @@ RSpec.describe "Dashboard" do
 
     expect(response).to have_http_status(:ok)
     expect(response.body).to include("还没有站点")
-    expect(response.body).to include("创建或导入站点后，这里会显示增长分数、转化趋势和实验状态。")
+    expect(response.body).to include("接入站点后，这里会显示页面表现、转化趋势和实验状态。")
   end
 
   it "redirects authenticated users without an account away from protected pages" do

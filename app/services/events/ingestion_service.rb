@@ -93,7 +93,7 @@ module Events
       if (existing = existing_idempotent_event(site, idempotency_key, payload_fingerprint))
         existing
       else
-        # assignment 是曝光副作用，必须和事件创建在同一个事务里，避免系统里留下半条归因数据。
+        # 实验分配和事件在同一事务中创建，避免留下不完整的归因记录。
         attribution_for(site)
         find_or_create_event!(site, idempotency_key:, payload_fingerprint:)
       end
@@ -135,7 +135,7 @@ module Events
       existing = site.events.find_by(idempotency_key:)
       return nil unless existing
 
-      # 幂等 key 是业务事件身份，不只是唯一索引。并发撞库后也要重查指纹，避免不同 payload 被当成同一事件。
+      # 幂等键代表业务事件；并发冲突后仍需比较请求指纹。
       raise InvalidPayload, "idempotency key payload fingerprint missing" if existing.payload_fingerprint.blank?
       raise InvalidPayload, "idempotency key payload mismatch" if existing.payload_fingerprint != payload_fingerprint
 
@@ -153,7 +153,7 @@ module Events
 
       experiment = site.experiments.active.find_by(id: @params[:experiment_id])
       raise InvalidPayload, "experiment is invalid" unless experiment
-      # 显式传 experiment 也不能绕过发布快照校验；被回滚或还在草稿里的区块，不应该继续产生实验数据。
+      # 显式实验归因仍需校验已发布区块，草稿和已移除区块不能产生实验数据。
       raise InvalidPayload, "experiment section is not published" unless experiment.section&.uid && Sites::PublishedRuntime.new(site).visible_section_uid?(experiment.section.uid)
 
       variant = experiment.variants.find_by(key: @params[:variant_key])
@@ -166,7 +166,7 @@ module Events
     def section_attribution(site)
       section_uid = @params[:section_uid].presence
       return nil unless section_uid
-      # section_uid 是公开页面和外部接口之间的业务锚点，先确认它仍在正式页面里，再做分流。
+      # 先确认 `section_uid` 存在于最新发布版本，再创建实验分配。
       raise InvalidPayload, "section is not published" unless Sites::PublishedRuntime.new(site).visible_section_uid?(section_uid)
 
       experiment = site.experiments.accepting_new_assignments.joins(:section).find_by(sections: { uid: section_uid })

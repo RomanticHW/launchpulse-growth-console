@@ -1,6 +1,6 @@
 <section class="bg-[var(--site-base)] px-6 py-14 text-[var(--site-ink)] sm:px-8">
   <div class="mx-auto max-w-6xl">
-    <h2 class="font-site-display text-3xl font-semibold tracking-tight"><%= props["headline"] || "精选产品" %></h2>
+    <h2 class="font-site-display text-3xl font-semibold tracking-tight"><%= props["headline"] || "热门商品" %></h2>
     <div class="mt-7 grid grid-cols-[repeat(auto-fit,minmax(min(100%,13rem),1fr))] gap-4">
     <% current_site = local_assigns[:public_site] || @site %>
     <% Array(props["products"]).each do |product| %>

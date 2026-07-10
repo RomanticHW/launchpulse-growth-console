@@ -154,7 +154,7 @@ RSpec.describe "Public forms and checkout" do
     get "/s/checkout-confirmation-demo", params: { ordered: 1 }
 
     expect(response).to have_http_status(:ok)
-    expect(response.body).to include("订单已创建")
+    expect(response.body).to include("订单提交成功")
   end
 
   it "sanitizes section and product metadata through the shared sanitizer" do

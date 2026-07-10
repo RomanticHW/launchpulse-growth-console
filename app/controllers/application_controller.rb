@@ -29,7 +29,7 @@ class ApplicationController < ActionController::Base
       redirect_to new_session_path and return
     elsif current_account.blank?
       reset_session
-      redirect_to new_session_path, alert: "请先加入一个账户。" and return
+      redirect_to new_session_path, alert: "当前用户尚未加入任何账号。" and return
     end
   end
 
@@ -39,7 +39,7 @@ class ApplicationController < ActionController::Base
     allowed = roles.map(&:to_s)
     return if current_membership && allowed.include?(current_membership.role)
 
-    redirect_to root_path, alert: "没有权限执行这个操作。" and return
+    redirect_to root_path, alert: "你没有权限执行此操作。" and return
   end
 
   def require_editor!
@@ -50,4 +50,3 @@ class ApplicationController < ActionController::Base
     require_role!(Membership::OWNER)
   end
 end
-

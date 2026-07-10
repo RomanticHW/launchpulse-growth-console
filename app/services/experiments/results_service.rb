@@ -59,8 +59,8 @@ module Experiments
     end
 
     def compare_to_control(stats, control_stats, control_row)
-      # 这里用透明的近似算法展示趋势；生产实验平台还需要更严谨的统计策略。
-      return { absolute_delta: 0.to_d, lift: 0.to_d, lift_label: "基准版本", confidence: 0 } if control_row
+      # 当前近似算法仅用于趋势展示，不作为严格的统计决策依据。
+      return { absolute_delta: 0.to_d, lift: 0.to_d, lift_label: "原始版本", confidence: 0 } if control_row
 
       control_rate = control_stats.fetch(:conversion_rate)
       conversion_rate = stats.fetch(:conversion_rate)
@@ -83,7 +83,8 @@ module Experiments
     end
 
     def lift_label_for(lift, control_rate, conversion_rate)
-      return "从 0 基准起步" if lift.nil? && control_rate.zero? && conversion_rate.positive?
+      return "原始版本暂无转化" if lift.nil? && control_rate.zero? && conversion_rate.positive?
+      return "下降 #{lift.abs}%" if lift.negative?
 
       "提升 #{lift}%"
     end
@@ -107,8 +108,8 @@ module Experiments
     end
 
     def label_for(variant, control, stats, control_stats, comparison)
-      return "原版本" if variant == control
-      return "数据不足" if stats.fetch(:visitors) < 50 || control_stats.fetch(:visitors) < 50
+      return "原始版本" if variant == control
+      return "样本不足" if stats.fetch(:visitors) < 50 || control_stats.fetch(:visitors) < 50
 
       confidence = comparison.fetch(:confidence)
       lift = comparison.fetch(:lift)
@@ -116,7 +117,7 @@ module Experiments
       return "暂时领先" if absolute_delta.positive? && confidence >= 80
       return "表现偏弱" if lift&.negative? && confidence >= 80
 
-      "数据不足"
+      "样本不足"
     end
   end
 end

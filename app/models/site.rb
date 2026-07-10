@@ -13,7 +13,7 @@ class Site < ApplicationRecord
   has_many :recommendations, dependent: :destroy
   has_many :experiments, dependent: :destroy
   has_many :contacts, dependent: :destroy
-  # 删除顺序是数据约束，不是业务优先级：订单项还引用商品，所以站点重置时必须先删订单再删商品。
+  # 订单项引用商品，删除站点时必须先删除订单再删除商品。
   has_many :orders, dependent: :destroy
   has_many :products, dependent: :destroy
   has_many :audit_logs, dependent: :nullify

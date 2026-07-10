@@ -4,7 +4,7 @@ class AddGrowthLoopRuntimeFields < ActiveRecord::Migration[8.1]
     section_model = Class.new(ActiveRecord::Base) do
       self.table_name = "sections"
     end
-    # 迁移只依赖表结构，不依赖未来 app model 的验证或回调，避免老迁移被新业务规则拖坏。
+    # 迁移只依赖当前表结构，避免后续模型验证或回调导致历史迁移失败。
     section_model.reset_column_information
     section_model.find_each do |section|
       section.update_columns(uid: SecureRandom.uuid)

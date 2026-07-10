@@ -23,7 +23,7 @@ module Experiments
     private
 
     def weighted_variant_for(variants, visitor_id)
-      # 分流不是每次随机抽签，而是访客和实验的稳定哈希；同一访客刷新后仍会看到同一版本。
+      # 使用访客与实验的稳定哈希，同一访客持续看到相同版本。
       total_weight = variants.sum { |variant| variant.weight.to_i.positive? ? variant.weight.to_i : 0 }
       return equal_split_variant_for(variants, visitor_id) if total_weight <= 0
 

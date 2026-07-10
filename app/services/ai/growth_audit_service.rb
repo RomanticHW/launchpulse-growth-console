@@ -6,17 +6,17 @@ module Ai
 
     def call
       ActiveRecord::Base.transaction do
-        # 这里先保留确定性审计：本地运行不依赖外部密钥，测试也能稳定断言建议内容。
-        # 真实产品接入模型后，仍然应该保留这种兜底路径，避免增长闭环被第三方接口拖垮。
+        # 当前建议由固定规则生成，确保本地运行和测试不依赖外部服务。
+        # 后续接入外部服务时仍保留规则兜底，避免页面分析因第三方故障完全不可用。
         audit = @site.ai_audits.create!(
           status: "completed",
           score: calculated_score,
-          summary: "转化诊断已完成，并生成稳定的演示建议。",
+          summary: "页面分析完成，已生成可预览的优化建议。",
           input_snapshot: Sites::SnapshotService.new(@site).payload_for(@site)
         )
 
         recommendations_for(@site).each do |item|
-          # 审计输出是确定性的，重复运行不应该把同一条建议刷成多条待处理记录。
+          # 相同建议只保留一条待处理记录，避免重复分析产生重复任务。
           next if @site.recommendations.where(section: item[:section], title: item[:title], status: %w[open testing tested applied dismissed superseded]).exists?
 
           finding = audit.ai_findings.create!(
@@ -36,7 +36,7 @@ module Ai
             confidence: item[:confidence]
           )
 
-          # 建议必须落成补丁，而不是只停留在文案；后面的预览、实验和回滚都依赖这份 before/after 证据。
+          # 修改前后的内容同时写入补丁，供预览、实验和撤回使用。
           recommendation.create_section_patch!(
             section: item[:section],
             props_diff: item[:suggested_patch],
@@ -78,15 +78,15 @@ module Ai
     def build_hero_recommendation(section)
       recommendation_for(
         section:,
-        title: "让首屏行动更明确",
+        title: "明确首屏按钮的操作结果",
         severity: "high",
-        problem: "首屏按钮表达偏泛，访客不容易判断下一步能得到什么。",
-        evidence: "页面浏览量不低，但点按钮的人不多，首屏没把访客的兴趣接住。",
+        problem: "当前按钮文案较笼统，访客点击前难以判断下一步内容。",
+        evidence: "按钮写清楚操作结果，可以减少访客对后续步骤的疑问。",
         suggested_patch: {
-          "cta" => "领取方案",
-          "subheadline" => "用更明确的承诺和单一行动，把更多访客带到下一步。"
+          "cta" => "查看详细方案",
+          "subheadline" => "了解服务内容、适用场景和后续安排，再决定是否继续。"
         },
-        expected_impact: "按钮点击率预计提升 8-14%",
+        expected_impact: "重点观察首屏按钮点击率",
         confidence: 0.86
       )
     end
@@ -94,19 +94,19 @@ module Ai
     def build_feature_grid_recommendation(section)
       recommendation_for(
         section:,
-        title: "把可信理由前置",
+        title: "补充具体的选择理由",
         severity: "medium",
-        problem: "访客先看到的是卖点，但还没看到能让人放心的理由。",
-        evidence: "小商家的页面通常得先让人放心，访客才会填表单或下单。",
+        problem: "卖点描述较宽泛，缺少能帮助访客判断的具体信息。",
+        evidence: "服务内容、办理流程和重要限制越清楚，访客越容易做出选择。",
         suggested_patch: {
-          "headline" => "为什么顾客会选择我们",
+          "headline" => "选择我们的三个理由",
           "items" => [
-            { "title" => "本地口碑", "body" => "填表单或下单之前，先给一个具体、接地气的理由。" },
-            { "title" => "下一步明确", "body" => "按钮写清楚要做什么，能少一点犹豫。" },
-            { "title" => "承诺具体", "body" => "卖点保持清楚，访客更容易比较。" }
+            { "title" => "服务内容清楚", "body" => "页面直接说明提供什么，以及适合哪些使用场景。" },
+            { "title" => "办理流程明确", "body" => "提交信息后会收到什么、何时回复，都提前说明。" },
+            { "title" => "重要信息透明", "body" => "价格、范围和限制集中展示，方便访客比较。" }
           ]
         },
-        expected_impact: "转化率预计提升 4-9%",
+        expected_impact: "重点观察表单提交率和下单率",
         confidence: 0.74
       )
     end
@@ -114,15 +114,15 @@ module Ai
     def build_contact_form_recommendation(section)
       recommendation_for(
         section:,
-        title: "降低表单顾虑",
+        title: "说明提交后的联系安排",
         severity: "medium",
-        problem: "提交按钮没有说明后续会如何跟进。",
-        evidence: "清楚的回复时间能减少访客填写表单前的犹豫。",
+        problem: "表单没有说明提交后的回复时间和联系方式。",
+        evidence: "提前说明后续安排，可以减少填写过程中的不确定感。",
         suggested_patch: {
           "submit_label" => "提交需求",
-          "helper" => "我们会在 1 个工作日内回复。"
+          "helper" => "提交后，工作人员将在 1 个工作日内与你联系。"
         },
-        expected_impact: "表单完成率预计提升 3-7%",
+        expected_impact: "重点观察表单完成率",
         confidence: 0.71
       )
     end
@@ -130,18 +130,18 @@ module Ai
     def build_pricing_recommendation(section)
       recommendation_for(
         section:,
-        title: "让价格方案更容易比较",
+        title: "突出不同方案的适用人群",
         severity: "medium",
-        problem: "三档价格摆在一起，但看不出该选哪个。",
-        evidence: "对比越简单直接，越容易让人快速定下来。",
+        problem: "各档方案只列出价格和内容，适用人群不够明确。",
+        evidence: "说明每档方案适合谁，可以帮助访客缩短比较时间。",
         suggested_patch: {
-          "headline" => "选一个适合你现在阶段的方案",
+          "headline" => "按学习方式选择课程方案",
           "plans" => Array(section.props["plans"]).presence || [
-            { "name" => "入门版", "plan_key" => "starter", "price" => "$149", "description" => "模板和发布清单。" },
-            { "name" => "陪跑版", "plan_key" => "guided", "price" => "$399", "description" => "点评和每周发布支持。" }
+            { "name" => "自学版", "plan_key" => "starter", "price" => "¥999", "description" => "录播课程、配套模板和学习清单。" },
+            { "name" => "辅导版", "plan_key" => "guided", "price" => "¥2,699", "description" => "包含作业点评和每周直播答疑。" }
           ]
         },
-        expected_impact: "下单意愿预计提升 3-6%",
+        expected_impact: "重点观察方案选择率和订单创建率",
         confidence: 0.69
       )
     end
@@ -149,17 +149,17 @@ module Ai
     def build_product_grid_recommendation(section)
       recommendation_for(
         section:,
-        title: "强化产品选择路径",
+        title: "帮助顾客更快找到合适商品",
         severity: "medium",
-        problem: "产品列表没有把推荐套组讲清楚。",
-        evidence: "选择越简单，顾客越容易直接下单。",
+        problem: "产品列表只展示名称和价格，没有说明推荐组合或适用场景。",
+        evidence: "按使用需求组织商品，可以减少顾客来回比较的时间。",
         suggested_patch: {
-          "headline" => "顾客回购最多的套组",
+          "headline" => "按日常需求选择",
           "products" => Array(section.props["products"]).presence || [
-            { "name" => "入门护理套组", "product_key" => "starter-routine", "price" => "$84" }
+            { "name" => "基础护理套装", "product_key" => "starter-routine", "price" => "¥599" }
           ]
         },
-        expected_impact: "产品点击预计提升 4-8%",
+        expected_impact: "重点观察商品点击率和订单创建率",
         confidence: 0.72
       )
     end
@@ -167,17 +167,17 @@ module Ai
     def build_faq_recommendation(section)
       recommendation_for(
         section:,
-        title: "提前回答购买顾虑",
+        title: "补充下单前常见问题",
         severity: "low",
-        problem: "问答内容还可以更直接地处理购买前犹豫。",
-        evidence: "具体回答能在表单或购买前减少不确定感。",
+        problem: "当前问答没有覆盖提交或购买后的具体安排。",
+        evidence: "把回复时间、交付方式等常见问题提前说明，可以减少重复咨询。",
         suggested_patch: {
-          "headline" => "决定前常见的问题",
+          "headline" => "购买前常见问题",
           "items" => Array(section.props["items"]).presence || [
-            { "question" => "提交后会发生什么？", "answer" => "你会通过邮箱收到明确的下一步和时间安排。" }
+            { "question" => "提交后多久会收到回复？", "answer" => "工作人员会在 1 个工作日内通过邮件与你联系。" }
           ]
         },
-        expected_impact: "后续转化预计提升 2-5%",
+        expected_impact: "重点观察咨询提交率和购买转化率",
         confidence: 0.64
       )
     end
@@ -185,15 +185,15 @@ module Ai
     def build_testimonial_recommendation(section)
       recommendation_for(
         section:,
-        title: "让用户评价更具体",
+        title: "补充更具体的使用反馈",
         severity: "low",
-        problem: "当前评价可以把结果说得更具体。",
-        evidence: "评价写得越具体，访客越容易联想到自己的情况。",
+        problem: "当前反馈较笼统，没有说明具体的使用感受或服务过程。",
+        evidence: "包含场景和细节的反馈更便于访客判断是否符合自己的需要。",
         suggested_patch: {
-          "quote" => "下一步很清楚，我也知道为什么它适合我当下的需求。",
-          "author" => section.props["author"].presence || "真实用户"
+          "quote" => "页面说明很清楚，提交后很快就知道下一步怎么安排。",
+          "author" => section.props["author"].presence || "用户反馈示例"
         },
-        expected_impact: "信任感预计提升 2-4%",
+        expected_impact: "重点观察表单提交率和购买转化率",
         confidence: 0.62
       )
     end

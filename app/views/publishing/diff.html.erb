@@ -2,7 +2,7 @@
   <header class="flex flex-col justify-between gap-4 md:flex-row md:items-center">
     <div>
       <div class="text-sm text-slate-500"><%= @site.name %></div>
-      <h1 class="font-display text-3xl font-semibold tracking-tight text-console-950">版本 <%= @diff.fetch("from_version") %> 差异</h1>
+      <h1 class="font-display text-3xl font-semibold tracking-tight text-console-950">版本 <%= @diff.fetch("from_version") %> 与当前草稿</h1>
     </div>
     <div class="flex gap-2">
       <%= link_to "返回站点", site_path(@site), class: "rounded-[var(--radius-control)] border border-paper-line bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-paper" %>
@@ -14,13 +14,13 @@
     <div class="flex flex-col gap-5 md:flex-row md:items-center">
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-3">
-          <span class="rounded-[var(--radius-pill)] bg-signal-amber/10 px-3 py-1 font-mono text-xs font-semibold text-signal-amber-dim">快照</span>
+          <span class="rounded-[var(--radius-pill)] bg-signal-amber/10 px-3 py-1 font-mono text-xs font-semibold text-signal-amber-dim">已发布版本</span>
           <div class="h-px flex-1 bg-gradient-to-r from-signal-amber via-paper-line to-signal-violet"></div>
           <span class="rounded-[var(--radius-pill)] bg-signal-violet/10 px-3 py-1 font-mono text-xs font-semibold text-signal-violet-dim">当前草稿</span>
         </div>
         <div class="mt-4 grid gap-3 sm:grid-cols-3">
           <div>
-            <div class="text-xs text-slate-500">快照区块</div>
+            <div class="text-xs text-slate-500">已发布区块</div>
             <div class="mt-1 font-mono text-2xl font-semibold text-console-950"><%= @diff.fetch("snapshot_sections") %></div>
           </div>
           <div>
@@ -28,7 +28,7 @@
             <div class="mt-1 font-mono text-2xl font-semibold text-console-950"><%= @diff.fetch("current_sections") %></div>
           </div>
           <div>
-            <div class="text-xs text-slate-500">未变化</div>
+            <div class="text-xs text-slate-500">无变更</div>
             <div class="mt-1 font-mono text-2xl font-semibold text-console-950"><%= @diff.fetch("unchanged_count") %></div>
           </div>
         </div>
@@ -62,7 +62,7 @@
         </div>
       <% end %>
       <% if @diff.fetch("changed_sections").empty? %>
-        <div class="text-sm text-slate-500">没有区块属性变化。</div>
+        <div class="text-sm text-slate-500">区块内容没有变化。</div>
       <% end %>
     </div>
   </section>
@@ -75,7 +75,7 @@
           <div class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-emerald-500"></span><span><%= section.fetch("name") %></span> <span class="font-mono text-xs text-slate-400"><%= section.fetch("kind") %></span></div>
         <% end %>
         <% if @diff.fetch("added_sections").empty? %>
-          <div class="text-sm text-slate-500">没有新增区块。</div>
+          <div class="text-sm text-slate-500">暂无新增区块。</div>
         <% end %>
       </div>
     </div>
@@ -86,7 +86,7 @@
           <div class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-red-500"></span><span><%= section.fetch("name") %></span> <span class="font-mono text-xs text-slate-400"><%= section.fetch("kind") %></span></div>
         <% end %>
         <% if @diff.fetch("removed_sections").empty? %>
-          <div class="text-sm text-slate-500">没有删除区块。</div>
+          <div class="text-sm text-slate-500">暂无删除区块。</div>
         <% end %>
       </div>
     </div>
@@ -94,6 +94,6 @@
 
   <details class="rounded-[var(--radius-panel)] border border-paper-line bg-white p-4 console-panel-shadow">
     <summary class="cursor-pointer text-sm font-semibold text-console-950">原始 JSON</summary>
-    <p class="mt-3 text-sm text-slate-500">完整快照 JSON 可以通过上方链接查看。</p>
+    <p class="mt-3 text-sm text-slate-500">可通过页面上方的链接查看完整版本数据。</p>
   </details>
 </div>

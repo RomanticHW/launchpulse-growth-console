@@ -526,5 +526,3 @@ RSpec.describe Analytics::AggregationService do
     expect(assignment.conversions.count).to eq(0)
   end
 end
-
-

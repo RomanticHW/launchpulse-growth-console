@@ -10,7 +10,7 @@ class SectionPatchesController < ApplicationController
   def apply
     @patch.apply!
     AuditLog.create!(account: current_account, user: current_user, site: @site, action: "patch_applied", metadata: { section_patch_id: @patch.id })
-    redirect_to site_with_selected_section, notice: "补丁已应用到草稿。"
+    redirect_to site_with_selected_section, notice: "改动已应用到草稿。"
   rescue ActiveRecord::RecordInvalid => error
     redirect_to site_with_selected_section, alert: error.record.errors.full_messages.to_sentence
   end
@@ -18,7 +18,7 @@ class SectionPatchesController < ApplicationController
   def revert
     @patch.revert!
     AuditLog.create!(account: current_account, user: current_user, site: @site, action: "patch_reverted", metadata: { section_patch_id: @patch.id })
-    redirect_to site_with_selected_section, notice: "补丁已撤回。"
+    redirect_to site_with_selected_section, notice: "改动已撤回。"
   rescue ActiveRecord::RecordInvalid => error
     redirect_to site_with_selected_section, alert: error.record.errors.full_messages.to_sentence
   end

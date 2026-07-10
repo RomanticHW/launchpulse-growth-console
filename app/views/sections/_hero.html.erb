@@ -1,7 +1,7 @@
 <section class="site-hero-visual px-6 py-14 text-[var(--site-ink)] sm:px-8 lg:py-20">
   <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.08fr_0.92fr] lg:items-center">
     <div class="font-site-body">
-      <p class="font-mono text-sm font-medium" style="color: var(--site-accent);"><%= props["eyebrow"] || "持续增长" %></p>
+      <p class="font-mono text-sm font-medium" style="color: var(--site-accent);"><%= props["eyebrow"] || "欢迎了解" %></p>
       <h1 class="mt-4 max-w-3xl font-site-display text-4xl font-semibold leading-tight tracking-tight lg:text-6xl"><%= props["headline"] %></h1>
       <p class="mt-4 max-w-2xl text-base leading-7 opacity-80"><%= props["subheadline"] %></p>
       <a href="#contact"
@@ -13,7 +13,7 @@
          data-public-tracking-event-type-value="cta_click"
          data-public-tracking-section-uid-value="<%= section.uid %>"
          data-action="public-tracking#send"
-         <% end %>><%= props["cta"] || "开始了解" %></a>
+         <% end %>><%= props["cta"] || "查看详情" %></a>
     </div>
     <div class="relative min-h-72 overflow-hidden rounded-[var(--radius-panel)] border p-5" style="border-color: color-mix(in srgb, var(--site-accent) 28%, transparent); background: color-mix(in srgb, var(--site-surface) 78%, transparent);">
       <div class="site-grain absolute inset-0 opacity-70"></div>

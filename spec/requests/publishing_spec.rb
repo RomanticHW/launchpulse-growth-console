@@ -68,8 +68,8 @@ RSpec.describe "Publishing" do
     sign_in(user)
     get diff_site_publishing_path(site, snapshot_id: snapshot.id)
 
-    expect(response.body).to include("没有新增区块。")
-    expect(response.body).to include("没有删除区块。")
+    expect(response.body).to include("暂无新增区块。")
+    expect(response.body).to include("暂无删除区块。")
   end
 
   it "reports added and removed sections in diff output" do
@@ -144,5 +144,3 @@ RSpec.describe "Publishing" do
     expect(response.body).to include("headline")
   end
 end
-
-

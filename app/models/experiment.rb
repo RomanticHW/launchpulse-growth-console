@@ -68,7 +68,7 @@ class Experiment < ApplicationRecord
   end
 
   def clear_winner_variant_reference
-    # winner_variant 是 experiment 指向自身 variant 的父子反向引用；销毁前先断开，避免数据库外键卡住重置种子数据。
+    # `winner_variant` 反向引用实验版本，销毁前先断开以满足外键约束。
     update_column(:winner_variant_id, nil) if winner_variant_id.present?
   end
 end

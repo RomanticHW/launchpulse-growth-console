@@ -8,13 +8,13 @@ class Event < ApplicationRecord
   belongs_to :experiment, optional: true
   belongs_to :variant, optional: true
 
-  # 事件是外部输入入口，归因字段必须互相对得上，避免后续聚合和实验结果被脏数据放大。
+  # 归因字段必须相互一致，防止无效事件进入聚合和实验结果。
   validates :event_type, inclusion: { in: TYPES }
   validates :visitor_id, :occurred_at, presence: true
   validates :source, inclusion: { in: SOURCES }
   validates :device, inclusion: { in: DEVICES }
   validates :idempotency_key, uniqueness: { scope: :site_id }, allow_blank: true
-  # 幂等键代表业务事件身份，有键就必须有对应请求指纹，不能只靠服务层兜底。
+  # 带幂等键的事件必须保存请求指纹，模型层和服务层共同保证该约束。
   validates :payload_fingerprint, presence: true, if: -> { idempotency_key.present? }
   validate :page_belongs_to_site
   validate :experiment_belongs_to_site

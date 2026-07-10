@@ -14,7 +14,7 @@ class AddStableRuntimeKeys < ActiveRecord::Migration[8.1]
         self.table_name = "form_fields"
       end
 
-      # 迁移使用匿名模型，避免未来 Product/FormField 的验证、回调变化影响历史迁移。
+      # 使用匿名模型，避免后续业务模型变化影响历史迁移。
       product_model.reset_column_information
       product_model.find_each do |product|
         product.update_columns(key: unique_key_for(product_model.where(site_id: product.site_id).where.not(id: product.id), product.name.to_s.parameterize))

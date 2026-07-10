@@ -7,7 +7,7 @@ module Sites
     end
 
     def visible_section_uids
-      # 当前公开运行时只开放首页 `/s/:slug`；多页公开站点需要把这里扩展成 path-aware 可见性。
+      # 当前只开放首页；多页面支持需要按页面路径判断区块可见性。
       published_sections(@site.home_page).filter_map(&:uid).to_set
     end
 

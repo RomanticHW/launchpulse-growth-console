@@ -8,7 +8,7 @@ module Analytics
     end
 
     def broadcast_event(event)
-      # 聚合只负责写统计结果；实时刷新单独放在这里，后续要换频道或限流，不会影响统计口径。
+      # 统计写入与页面广播分开，调整频道或限流策略不会改变统计口径。
       Turbo::StreamsChannel.broadcast_prepend_to(
         event_stream_name,
         target: "event_stream",

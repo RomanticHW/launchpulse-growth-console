@@ -5,18 +5,18 @@ module Public
     def create
       site = find_site
       form = site.forms.find(params[:form_id])
-      # 表单归属的区块如果不在已发布快照里，就不能接收公开提交，避免草稿表单提前收集数据。
-      return render plain: "该表单暂不可提交", status: :unprocessable_content unless form.section&.uid && section_uid_visible?(site, form.section.uid)
+      # 只有最新发布版本中的表单可以接收公开提交。
+      return render plain: "该表单暂时无法提交。", status: :unprocessable_content unless form.section&.uid && section_uid_visible?(site, form.section.uid)
       payload = submission_params(form).to_h
-      return render plain: "请填写邮箱", status: :unprocessable_content if payload["email"].blank?
-      return render plain: "邮箱格式不正确", status: :unprocessable_content unless payload["email"].match?(URI::MailTo::EMAIL_REGEXP)
+      return render plain: "请填写邮箱。", status: :unprocessable_content if payload["email"].blank?
+      return render plain: "请输入有效的邮箱地址。", status: :unprocessable_content unless payload["email"].match?(URI::MailTo::EMAIL_REGEXP)
       missing_field = form.form_fields.find { |field| field.required? && payload[field.param_key].blank? }
-      return render plain: "请填写#{missing_field.label}", status: :unprocessable_content if missing_field
+      return render plain: "请填写“#{missing_field.label}”。", status: :unprocessable_content if missing_field
 
       contact = nil
       event = nil
       ActiveRecord::Base.transaction do
-        # 联系人和提交记录一起写入；事件在校验和持久化成功后再记录，避免无效表单进入漏斗。
+        # 联系人、提交记录和事件在同一事务中写入。
         contact = site.contacts.create_or_find_by!(email: payload.fetch("email")) do |record|
           record.name = payload["name"]
           record.source = "public_site"
@@ -39,7 +39,7 @@ module Public
 
       redirect_to public_site_path(site.slug, submitted: 1)
     rescue ActiveRecord::RecordInvalid => error
-      render plain: "提交内容未通过校验，请检查后重试", status: :unprocessable_content
+      render plain: "提交内容有误，请检查后重试。", status: :unprocessable_content
     rescue Events::MetadataSanitizer::InvalidMetadata, HiddenSectionError, InvalidSubmissionPayload => error
       render plain: error.message, status: :unprocessable_content
     end
@@ -49,7 +49,7 @@ module Public
     def submission_params(form)
       allowed_keys = form.form_fields.map(&:param_key)
       allowed_keys |= %w[email name message]
-      # 公开表单是开放输入，缺失或畸形 payload 要走业务校验返回 422，不能冒成框架异常。
+      # 缺失或格式错误的表单内容返回 422，不暴露框架异常。
       payload = params.key?(:form_submission) ? params[:form_submission] : ActionController::Parameters.new
       case payload
       when ActionController::Parameters
@@ -57,7 +57,7 @@ module Public
       when Hash
         ActionController::Parameters.new(payload).permit(*allowed_keys)
       else
-        raise InvalidSubmissionPayload, "表单内容格式不正确"
+        raise InvalidSubmissionPayload, "表单内容格式不正确。"
       end
     end
   end

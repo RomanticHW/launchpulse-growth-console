@@ -1,25 +1,25 @@
 <main class="grid min-h-[100dvh] grid-cols-1 bg-console-950 text-white lg:grid-cols-[1.18fr_0.82fr]">
   <section class="login-grid flex items-center overflow-hidden px-8 py-12 lg:px-16">
     <div class="max-w-2xl">
-      <div class="mb-5 inline-flex rounded-[var(--radius-pill)] border border-signal-amber/25 px-3 py-1 font-mono text-xs text-signal-amber-tint">实时增长信号</div>
-      <h1 class="font-display text-4xl font-semibold leading-tight tracking-tight lg:text-6xl">把访问流量变成可执行的转化决策。</h1>
-      <p class="mt-6 max-w-xl text-base leading-7 text-slate-300">找出薄弱区块，验证不同版本，发布胜出方案，并在站点运行时持续观察访客信号。</p>
+      <div class="mb-5 inline-flex rounded-[var(--radius-pill)] border border-signal-amber/25 px-3 py-1 font-mono text-xs text-signal-amber-tint">网站转化管理</div>
+      <h1 class="font-display text-4xl font-semibold leading-tight tracking-tight lg:text-6xl">从页面优化到实验发布，一处完成。</h1>
+      <p class="mt-6 max-w-xl text-base leading-7 text-slate-300">查看各区块的访问与转化表现，通过对照实验验证改动，再把效果更好的版本发布到站点。</p>
       <div class="mt-8 overflow-hidden rounded-[var(--radius-panel)] border border-console-line bg-console-900/70 p-4">
         <svg viewBox="0 0 560 120" class="h-28 w-[1120px] text-signal-amber login-wave" aria-hidden="true">
           <polyline points="0,64 36,64 50,42 66,84 82,58 116,58 132,28 150,92 166,64 230,64 244,48 260,78 280,60 336,60 350,36 366,88 386,62 448,62 466,44 482,76 504,61 560,61 596,64 610,42 626,84 642,58 676,58 692,28 710,92 726,64 790,64 804,48 820,78 840,60 896,60 910,36 926,88 946,62 1008,62 1026,44 1042,76 1064,61 1120,61" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </div>
       <ol class="mt-8 grid gap-4 text-sm text-slate-300">
-        <li class="grid grid-cols-[40px_1fr] items-center gap-3"><span class="font-mono text-signal-amber-tint">01</span><span class="border-l border-console-line pl-4">定位拖累转化的页面区块。</span></li>
-        <li class="grid grid-cols-[40px_1fr] items-center gap-3"><span class="font-mono text-signal-violet-tint">02</span><span class="border-l border-console-line pl-4">用实验验证原版和新版。</span></li>
-        <li class="grid grid-cols-[40px_1fr] items-center gap-3"><span class="font-mono text-signal-amber-tint">03</span><span class="border-l border-console-line pl-4">发布胜出方案，让数据继续回流。</span></li>
+        <li class="grid grid-cols-[40px_1fr] items-center gap-3"><span class="font-mono text-signal-amber-tint">01</span><span class="border-l border-console-line pl-4">查看各区块的访问与转化表现。</span></li>
+        <li class="grid grid-cols-[40px_1fr] items-center gap-3"><span class="font-mono text-signal-violet-tint">02</span><span class="border-l border-console-line pl-4">比较原始版本与优化版本的实际效果。</span></li>
+        <li class="grid grid-cols-[40px_1fr] items-center gap-3"><span class="font-mono text-signal-amber-tint">03</span><span class="border-l border-console-line pl-4">确认实验结果后发布表现更好的版本。</span></li>
       </ol>
     </div>
   </section>
   <section class="flex items-center bg-paper px-8 py-12 text-slate-950 lg:px-14">
     <div class="w-full max-w-md">
       <h2 class="font-display text-3xl font-semibold tracking-tight">登录</h2>
-      <p class="mt-2 text-sm text-slate-500">演示账号：demo@launchpulse.test / password</p>
+      <p class="mt-2 text-sm text-slate-500">体验账号：demo@launchpulse.test / password</p>
       <% if flash[:alert].present? %>
         <div class="mt-5 rounded-[var(--radius-control)] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"><%= flash[:alert] %></div>
       <% end %>

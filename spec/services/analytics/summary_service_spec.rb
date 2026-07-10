@@ -54,4 +54,3 @@ RSpec.describe Analytics::SummaryService do
     expect(summary.fetch(:page_views)).to eq(2)
   end
 end
-

@@ -19,4 +19,3 @@ RSpec.describe Site do
     expect(other.errors[:slug]).to be_present
   end
 end
-

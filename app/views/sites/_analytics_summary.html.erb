@@ -5,7 +5,7 @@
 
   <div class="flex items-start justify-between gap-4">
     <div class="min-w-0">
-      <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Signal Board</div>
+      <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">数据概览</div>
       <h3 class="mt-1 font-display text-base font-semibold text-console-950">全站表现</h3>
     </div>
     <div class="rounded-[var(--radius-pill)] bg-signal-amber/10 px-2.5 py-1 text-xs font-semibold text-signal-amber-dim">实时</div>
@@ -28,7 +28,7 @@
       <div class="mt-1 truncate font-mono text-xl font-semibold text-console-950 tabular-nums" data-controller="count-up" data-count-up-key-value="site-<%= site.id %>-summary-unique-visitors" data-count-up-end-value="<%= summary[:unique_visitors] %>"><%= number_with_delimiter(summary[:unique_visitors]) %></div>
     </div>
     <div class="min-w-0">
-      <div class="text-xs text-slate-500">漏斗步骤</div>
+      <div class="text-xs text-slate-500">转化步骤</div>
       <div class="mt-1 font-mono text-xl font-semibold text-console-950 tabular-nums"><%= summary[:funnel].size %></div>
     </div>
   </div>

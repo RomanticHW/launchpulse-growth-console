@@ -1,17 +1,17 @@
 <div class="space-y-6">
   <header class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
     <div>
-      <h1 class="font-display text-3xl font-semibold tracking-tight text-console-950">站点</h1>
-      <p class="mt-1 text-sm text-slate-500">观察转化质量、实验进展和实时访客行为。</p>
+      <h1 class="font-display text-3xl font-semibold tracking-tight text-console-950">站点管理</h1>
+      <p class="mt-1 text-sm text-slate-500">查看各站点的访问、转化和实验进展。</p>
     </div>
   </header>
 
   <% if @sites.empty? %>
     <section class="rounded-[var(--radius-panel)] border border-paper-line bg-white p-6 console-panel-shadow">
       <div class="max-w-xl">
-        <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Workspace</div>
+        <div class="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">站点管理</div>
         <h2 class="mt-2 font-display text-2xl font-semibold tracking-tight text-console-950">还没有站点</h2>
-        <p class="mt-2 text-sm leading-6 text-slate-500">创建或导入站点后，这里会显示增长分数、转化趋势和实验状态。</p>
+        <p class="mt-2 text-sm leading-6 text-slate-500">接入站点后，这里会显示页面表现、转化趋势和实验状态。</p>
       </div>
     </section>
   <% else %>

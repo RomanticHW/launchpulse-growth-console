@@ -126,14 +126,14 @@ RSpec.describe "Public sites" do
     Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
 
     get "/s/debug-badge-demo"
-    expect(response.body).not_to include("演示运行信息")
+    expect(response.body).not_to include("调试信息")
 
     original = ENV["DEMO_DEBUG"]
     ENV["DEMO_DEBUG"] = "true"
     get "/s/debug-badge-demo"
 
-    expect(response.body).to include("演示运行信息")
-    expect(response.body).to include("Hero copy: 建议版本")
+    expect(response.body).to include("调试信息")
+    expect(response.body).to include("Hero copy: 优化版本")
   ensure
     ENV["DEMO_DEBUG"] = original
   end
@@ -290,7 +290,7 @@ RSpec.describe "Public sites" do
     post "/s/invalid-event-demo/events", params: { event_type: "cta_click" }
 
     expect(response).to have_http_status(:unprocessable_content)
-    expect(JSON.parse(response.body).fetch("error")).to include("事件未通过校验")
+    expect(JSON.parse(response.body).fetch("error")).to include("事件内容不符合要求")
     expect(site.events.count).to eq(0)
   end
 

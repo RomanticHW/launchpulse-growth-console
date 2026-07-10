@@ -85,7 +85,7 @@ RSpec.describe Experiments::LifecycleService do
 
     expect do
       service.launch_from_recommendation!(site:, recommendation: second, user: nil, account: site.account)
-    end.to raise_error(Experiments::LifecycleService::InvalidTransition, /这个区块已有未结束的实验/)
+    end.to raise_error(Experiments::LifecycleService::InvalidTransition, /这个区块已有尚未处理完的实验/)
   end
 
   it "locks the section while checking and launching an experiment" do
@@ -220,5 +220,3 @@ RSpec.describe Experiments::LifecycleService do
     expect(experiment.winner_variant_id).to be_in([ control_id, variant_id ])
   end
 end
-
-

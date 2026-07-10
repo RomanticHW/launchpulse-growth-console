@@ -11,10 +11,10 @@ module Experiments
       experiment = nil
 
       section.with_lock do
-        # 实验状态流统一收在 service 里；控制器不直接改状态，避免绕过补丁和胜出版本的业务规则。
+        # 实验状态统一由服务管理，控制器不能绕过补丁和结果应用规则。
         validate_launchable!(recommendation)
-        raise InvalidTransition, "这条建议已有未结束的实验。" if unresolved_recommendation_experiment?(site, recommendation)
-        raise InvalidTransition, "这个区块已有未结束的实验。" if unresolved_section_experiment?(site, section)
+        raise InvalidTransition, "这条建议已有尚未处理完的实验。" if unresolved_recommendation_experiment?(site, recommendation)
+        raise InvalidTransition, "这个区块已有尚未处理完的实验。" if unresolved_section_experiment?(site, section)
 
         patch = recommendation.section_patch
         ActiveRecord::Base.transaction do
@@ -26,8 +26,8 @@ module Experiments
             primary_goal: primary_goal_for(recommendation),
             started_at: Time.current
           )
-          experiment.variants.create!(name: "原版本", key: "control", role: "control", props: control_props_for(section, patch), weight: 50)
-          experiment.variants.create!(name: "建议版本", key: "variant", role: "variant", props: variant_props_for(section, recommendation, patch), weight: 50)
+          experiment.variants.create!(name: "原始版本", key: "control", role: "control", props: control_props_for(section, patch), weight: 50)
+          experiment.variants.create!(name: "优化版本", key: "variant", role: "variant", props: variant_props_for(section, recommendation, patch), weight: 50)
           recommendation.update!(status: "testing")
           patch&.update!(status: "testing")
           audit!(account:, user:, site:, action: "experiment_launched", experiment:, metadata: { recommendation_id: recommendation.id })
@@ -54,7 +54,7 @@ module Experiments
     def complete!(experiment:, user:, account:)
       experiment.with_lock do
         unless %w[active paused].include?(experiment.status)
-          raise InvalidTransition, "只有运行中或已暂停的实验可以完成。"
+          raise InvalidTransition, "只有运行中或已暂停的实验可以结束。"
         end
 
         experiment.update!(status: "completed", ended_at: Time.current)
@@ -65,10 +65,10 @@ module Experiments
     end
 
     def apply_winner!(experiment:, variant:, user:, account:)
-      # 胜出版本只改变当前草稿区块，不回写补丁快照；补丁的 before/after 是实验创建时的证据。
+      # 所选版本只更新当前草稿，不改写补丁保存的修改前后内容。
       experiment.with_lock do
-        raise InvalidTransition, "请先完成实验，再应用胜出版本。" unless experiment.status == "completed"
-        raise InvalidTransition, "胜出版本已经应用过。" if experiment.winner_applied_at.present?
+        raise InvalidTransition, "请先结束实验，再应用实验结果。" unless experiment.status == "completed"
+        raise InvalidTransition, "实验结果已经应用过。" if experiment.winner_applied_at.present?
         raise InvalidTransition, "该版本不属于当前实验。" if variant.experiment_id != experiment.id
 
         experiment.section.update!(props: variant.props)
@@ -90,7 +90,7 @@ module Experiments
     end
 
     def unresolved_section_experiment?(site, section)
-      # 当前项目不支持同一区块叠多层实验；否则公开页按 section_uid 分流时会出现归因歧义。
+      # 同一区块不允许并行实验，避免渲染和归因发生冲突。
       site.experiments
         .where(section:)
         .where("(status IN (?) OR (status = ? AND winner_applied_at IS NULL))", %w[active paused], "completed")
@@ -100,17 +100,17 @@ module Experiments
     def validate_launchable!(recommendation)
       return if recommendation.status == "open"
       if recommendation.status == "applied" && recommendation.section_patch&.status == "applied"
-        # 已应用的建议只能做一次“原版本 vs 已应用版本”的复测；一旦有胜出结果，就不能重复开新实验刷结论。
+        # 已应用建议完成一次对照实验后，不能重复创建相同实验。
         return unless recommendation.experiments.where.not(winner_applied_at: nil).exists?
       end
 
-      raise InvalidTransition, "当前状态的建议不能启动实验。"
+      raise InvalidTransition, "当前状态的建议不能创建实验。"
     end
 
     def require_status!(experiment, expected, action:)
       return if experiment.status == expected
 
-      raise InvalidTransition, "当前实验状态不能执行这个操作。"
+      raise InvalidTransition, "当前实验状态不支持此操作。"
     end
 
     def transition!(experiment:, status:, user:, account:, action:, **attrs)

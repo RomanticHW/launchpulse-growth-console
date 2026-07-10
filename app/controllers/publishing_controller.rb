@@ -11,7 +11,7 @@ class PublishingController < ApplicationController
   def rollback
     snapshot = @site.published_snapshots.find(params[:snapshot_id])
     new_snapshot = Sites::SnapshotService.new(@site).rollback!(snapshot, user: current_user)
-    redirect_to @site, notice: "已回滚到版本 #{snapshot.version}，并发布为版本 #{new_snapshot.version}。"
+    redirect_to @site, notice: "已恢复版本 #{snapshot.version}，并发布为版本 #{new_snapshot.version}。"
   rescue Sites::SnapshotService::ChecksumMismatch, Sites::SnapshotService::UnresolvedExperiments => error
     redirect_to @site, alert: error.message
   end
@@ -31,4 +31,3 @@ class PublishingController < ApplicationController
     @site = current_account.sites.find(params[:site_id])
   end
 end
-

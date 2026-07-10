@@ -35,7 +35,7 @@ export default class extends Controller {
   }
 
   trim() {
-    // 流量模拟会快速 prepend 事件；这里只保留最近记录，避免演示页面的 DOM 无限制增长。
+    // 模拟访问会快速追加事件，只保留最近记录以限制 DOM 大小。
     const rows = Array.from(this.element.querySelectorAll("[data-event-row]")).filter((row) => row.dataset.eventRemoving !== "true")
     const rowsToRemove = rows.slice(this.limitValue)
     if (rowsToRemove.length === 0) return

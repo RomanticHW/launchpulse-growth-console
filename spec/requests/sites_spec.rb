@@ -21,7 +21,7 @@ RSpec.describe "Sites" do
     expect(old_key.reload.active).to be(false)
     expect(site.api_keys.active.where(name: "Demo tracking token").count).to eq(1)
     follow_redirect!
-    expect(response.body).to include("仅本次显示")
+    expect(response.body).to include("令牌仅显示一次")
     signed_token = response.body.match(%r{<textarea[^>]*>(.*?)</textarea>}m)[1]
 
     post "/api/v1/events", params: {
@@ -72,6 +72,6 @@ RSpec.describe "Sites" do
     get site_path(site)
 
     expect(response).to have_http_status(:ok)
-    expect(response.body).to include('data-turbo-submits-with="正在排队模拟..."')
+    expect(response.body).to include('data-turbo-submits-with="正在生成模拟数据..."')
   end
 end

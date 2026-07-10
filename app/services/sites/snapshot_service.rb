@@ -22,7 +22,7 @@ module Sites
         # Re-check under the site lock so a concurrent launch cannot slip in between
         # the unresolved guard and the structural restore / re-publish.
         if unresolved_experiments?
-          raise UnresolvedExperiments, "请先结束并应用实验胜出版本，再回滚发布。"
+          raise UnresolvedExperiments, "请先结束实验并应用实验结果，再恢复历史版本。"
         end
 
         retained_paths = snapshot.payload.fetch("pages", []).map { |page_payload| page_payload.fetch("path") }
@@ -33,7 +33,7 @@ module Sites
           page.update!(title: page_payload.fetch("title"), position: page_payload.fetch("position", 0))
           retained_uids = []
           page_payload.fetch("sections", []).each do |section_payload|
-            # 回滚优先按 uid 找区块，避免数据库 id 因导入或重建变化后恢复到错误位置。
+            # 按稳定 `uid` 匹配区块，避免数据库编号变化后恢复到错误位置。
             section = if section_payload["uid"].present?
               page.sections.find_or_initialize_by(uid: section_payload["uid"])
             else
@@ -50,12 +50,12 @@ module Sites
           page.sections.where.not(uid: retained_uids).destroy_all
         end
 
-        publish_under_lock!(user:, note: "回滚到版本 #{snapshot.version}")
+        publish_under_lock!(user:, note: "恢复版本 #{snapshot.version}")
       end
     end
 
     def diff(snapshot)
-      # 当前差异对比聚焦结构化区块属性，足够解释这次发布改了什么；视觉级对比可以作为后续编辑器能力。
+      # 当前差异只比较结构化区块属性，不生成视觉截图对比。
       current = payload_for(@site)
       previous_sections = flattened_sections(snapshot.payload)
       current_sections = flattened_sections(current)
@@ -99,7 +99,7 @@ module Sites
     def publish_under_lock!(user:, note: nil)
       version = @site.published_snapshots.maximum(:version).to_i + 1
       payload = payload_for(@site)
-      # 发布是草稿进入公开运行时的唯一入口；公开页面不会直接读取正在编辑的 sections。
+      # 发布是草稿进入公开站点的唯一入口。
       @site.update!(status: "published")
       @site.published_snapshots.create!(
         version:,
@@ -117,7 +117,7 @@ module Sites
     end
 
     def checksum_for(payload)
-      # 快照校验保护的是内容，不应该依赖 Ruby 或 PostgreSQL 保留 Hash key 顺序。
+      # 校验和基于规范化内容，不依赖哈希键顺序。
       Digest::SHA256.hexdigest(canonical_json(payload))
     end
 
@@ -154,7 +154,7 @@ module Sites
     end
 
     def legacy_checksum_for(payload)
-      # 只兼容本地演示迭代期间旧快照的 to_json 校验；新发布统一使用 canonical checksum。
+      # 旧版本保留 `to_json` 校验兼容，新版本统一使用规范化校验和。
       Digest::SHA256.hexdigest(payload.to_json)
     end
 

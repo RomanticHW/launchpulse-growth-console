@@ -22,7 +22,7 @@ class TrafficSimulatorJob < ApplicationJob
         result[assignment.experiment_id.to_s] = assignment.variant.key
       end
 
-      # page_view 只记录分配结果，不归因到某个实验；真正转化要等到具体 section 行为发生。
+      # 页面浏览只记录版本分配，具体区块行为发生后才记录实验转化。
       page_view = create_event!(site, page, "page_view", visitor_id, source, device, occurred_at, nil, metadata: { simulated: true, assigned_variants: })
       Analytics::AggregationService.new(page_view).call
 
@@ -36,7 +36,7 @@ class TrafficSimulatorJob < ApplicationJob
       conversion_probability = conversion_assignment&.variant&.role == "control" ? 0.11 : 0.18
       next unless rand < conversion_probability
 
-      # 模拟器只生成分析事件流，用来压后台任务和实时看板；真实业务记录由 public form/checkout 入口创建。
+      # 模拟任务只生成分析事件；联系人、表单和订单由公开业务入口创建。
       event_type = conversion_assignment&.experiment&.primary_goal || "form_submit"
       event_type = "form_submit" if event_type == "any_conversion"
       conversion = create_event!(site, page, event_type, visitor_id, source, device, occurred_at + rand(180).seconds, conversion_assignment)
@@ -86,7 +86,7 @@ class TrafficSimulatorJob < ApplicationJob
   end
 
   def broadcast_experiment_metrics(site, experiments, index)
-    # visitors 也会影响实验面板，但模拟器不能每个访客都 replace 一次；这里按批次刷新。
+    # 按批次刷新实验面板，避免每个模拟访客都触发一次页面替换。
     return if experiments.empty?
     return unless (index + 1) % 50 == 0
 

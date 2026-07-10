@@ -5,7 +5,7 @@ class FormField < ApplicationRecord
 
   before_validation :ensure_key
 
-  # 表单字段的 key 用于 submission payload，label 只是展示文案，后续可以安全改名。
+  # 字段 `key` 用于提交数据，展示名称可以独立修改。
   validates :label, :field_type, :key, presence: true
   validates :field_type, inclusion: { in: FIELD_TYPES }
   validates :key, uniqueness: { scope: :form_id }, format: { with: /\A[a-z0-9_]+\z/ }

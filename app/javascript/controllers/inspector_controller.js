@@ -17,8 +17,8 @@ export default class extends Controller {
   static values = {
     sectionId: String,
     previewSectionId: String,
-    defaultTitle: { type: String, default: "检查器总览" },
-    defaultMeta: { type: String, default: "全站指标、建议、实验和最近事件" }
+    defaultTitle: { type: String, default: "站点概览" },
+    defaultMeta: { type: String, default: "查看全站数据、优化建议、实验和最近事件" }
   }
 
   initialize() {
@@ -156,7 +156,7 @@ export default class extends Controller {
 
     this.selectedMetaTargets.forEach(target => {
       if (selectedSource) {
-        target.textContent = `${selectedSource.dataset.sectionKind || "区块"} / 仅显示关联建议和实验`
+        target.textContent = `${selectedSource.dataset.sectionKind || "区块"} / 显示相关建议和实验`
       } else {
         target.textContent = this.defaultMetaValue
       }

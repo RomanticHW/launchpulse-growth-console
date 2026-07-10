@@ -16,7 +16,7 @@ class SitesController < ApplicationController
     @site.api_keys.active.where(name: "Demo tracking token").update_all(active: false, updated_at: Time.current)
     key, raw_token = ApiKey.issue!(site: @site, name: "Demo tracking token")
     flash[:tracking_token] = key.signed_token(raw_token)
-    redirect_to @site, notice: "新的演示追踪 token 已生成，旧 token 已停用。"
+    redirect_to @site, notice: "新的追踪令牌已生成，此前的令牌已停用。"
   end
 
   private

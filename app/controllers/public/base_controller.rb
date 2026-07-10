@@ -9,7 +9,7 @@ module Public
       existing = cookies.signed[:launch_pulse_visitor_id]
       return existing if existing.present?
 
-      # 公开页的实验分流依赖稳定访客标识；这里用签名 cookie，避免普通参数伪造分流结果。
+      # 实验分流依赖稳定访客标识；签名 Cookie 可防止请求参数伪造分配结果。
       generated = SecureRandom.uuid
       cookies.signed[:launch_pulse_visitor_id] = {
         value: generated,
@@ -43,7 +43,7 @@ module Public
     def assignment_map(site, visible_section_uids: nil)
       site.experiments.active.includes(:variants, :section).each_with_object({}) do |experiment, result|
         next unless experiment.section
-        # 公开运行时只认已发布快照里的区块。草稿区块即使有实验，也不能污染真实访客数据。
+        # 公开入口只接受最新发布版本中的区块，草稿区块不能产生访客数据。
         next if visible_section_uids && !visible_section_uids.include?(experiment.section.uid)
 
         assignment = Experiments::AssignmentService.new(experiment).assign(visitor_id)
@@ -87,7 +87,7 @@ module Public
     end
 
     def record_public_event!(site:, event_type:, page: nil, metadata: {}, assignment: nil, section_uid: nil, form_id: nil, product_key: nil, enqueue: true)
-      # 公开埋点的附加字段也属于开放输入，先合并再统一走 sanitizer，避免不同入口出现两套清洗口径。
+      # 页面附加字段同样属于开放输入，合并后统一执行元数据清洗。
       raw_metadata = metadata_hash!(metadata)
       raw_metadata["section_uid"] = section_uid.to_s if section_uid.present?
       raw_metadata["form_id"] = form_id if form_id.present?

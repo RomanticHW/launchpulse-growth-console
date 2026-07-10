@@ -7,8 +7,12 @@ OUTPUT="${1:-"$ROOT/../launchpulse-demo.zip"}"
 cd "$ROOT"
 rm -f "$OUTPUT"
 
-zip -r "$OUTPUT" . \
+zip -rqD "$OUTPUT" . \
   -x ".git/*" \
+  -x ".worktrees/" \
+  -x ".worktrees/*" \
+  -x "worktrees/" \
+  -x "worktrees/*" \
   -x ".kamal/*" \
   -x "__MACOSX/*" \
   -x "*.DS_Store" \
@@ -39,6 +43,8 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
     for name in names:
         if (
             name == ".git/" or name.startswith(".git/") or
+            name == ".worktrees/" or name.startswith(".worktrees/") or
+            name == "worktrees/" or name.startswith("worktrees/") or
             name == "__MACOSX/" or name.startswith("__MACOSX/") or
             name.endswith(".DS_Store") or
             name == "tmp/" or name.startswith("tmp/") or

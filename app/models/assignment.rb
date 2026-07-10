@@ -3,7 +3,7 @@ class Assignment < ApplicationRecord
   belongs_to :variant
   has_many :conversions, dependent: :destroy
 
-  # assignment 是实验数据的基础边界，variant 不能串到另一个 experiment。
+  # 分配记录中的版本必须属于同一个实验。
   validates :visitor_id, presence: true, uniqueness: { scope: :experiment_id }
   validate :variant_belongs_to_experiment
 

@@ -1,8 +1,8 @@
 <section id="contact" class="px-6 py-14 text-[var(--site-ink)] sm:px-8" style="background: color-mix(in srgb, var(--site-surface) 74%, var(--site-base));">
   <div class="mx-auto grid w-full max-w-6xl gap-8 lg:grid-cols-2">
   <div>
-    <h2 class="font-site-display text-3xl font-semibold tracking-tight"><%= props["headline"] || "留下你的需求" %></h2>
-    <p class="mt-3 max-w-md text-sm leading-6 opacity-75"><%= props["helper"] || "告诉我们你想了解什么，我们会尽快回复。" %></p>
+    <h2 class="font-site-display text-3xl font-semibold tracking-tight"><%= props["headline"] || "留下联系方式" %></h2>
+    <p class="mt-3 max-w-md text-sm leading-6 opacity-75"><%= props["helper"] || "请填写以下信息，我们会尽快与你联系。" %></p>
   </div>
   <% if local_assigns[:public_site] && local_assigns[:form] %>
     <%= form_with url: public_site_form_submissions_path(public_site.slug, form_id: form.id),

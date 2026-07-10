@@ -1,6 +1,6 @@
-# Events API（`POST /api/v1/events`）
+# Events API
 
-外部事件入口。认证依赖站点签发的 **site_token**（`MessageVerifier` 签名 + `ApiKey` digest），不使用 Cookie 会话。
+`POST /api/v1/events` 用于接收外部页面或系统上报的访客事件。接口使用站点追踪令牌认证，不依赖后台登录会话。
 
 ## 请求
 
@@ -9,29 +9,52 @@ POST /api/v1/events
 Content-Type: application/json
 ```
 
-### 顶层字段
+### 字段
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `site_token` | 是 | 后台「生成追踪 token」得到的签名令牌 |
-| `event_type` | 是 | 见下方允许类型 |
-| `visitor_id` | 是 | 调用方提供的访客标识（稳定字符串） |
+| `site_token` | 是 | 后台生成的签名站点令牌 |
+| `event_type` | 是 | 事件类型，必须在 `Event::TYPES` 中 |
+| `visitor_id` | 是 | 调用方提供的稳定访客标识 |
 | `session_id` | 否 | 会话标识 |
-| `source` | 否 | 默认 `direct`；须在 `Event::SOURCES` 内 |
-| `device` | 否 | 默认 `desktop`；须在 `Event::DEVICES` 内 |
-| `page_path` | 否 | 默认 `/` |
-| `section_uid` | 否 | 已发布快照中的区块 uid；用于分流与归因 |
-| `experiment_id` | 条件 | 与 `variant_key` 成对出现，显式归因 |
-| `variant_key` | 条件 | 与 `experiment_id` 成对出现 |
-| `occurred_at` | 否 | ISO8601；非法时按当前时间 |
-| `idempotency_key` | 否 | 业务幂等键；同 key 不同 payload 会拒绝 |
-| `metadata` | 否 | JSON 对象；经 `MetadataSanitizer` 限制大小/深度 |
+| `source` | 否 | 访问来源，默认 `direct` |
+| `device` | 否 | 设备类型，默认 `desktop` |
+| `page_path` | 否 | 页面路径，默认 `/` |
+| `section_uid` | 否 | 最新发布版本中的区块 `uid` |
+| `experiment_id` | 条件必填 | 与 `variant_key` 同时提供 |
+| `variant_key` | 条件必填 | 与 `experiment_id` 同时提供 |
+| `occurred_at` | 否 | ISO 8601 时间；格式无效时使用当前时间 |
+| `idempotency_key` | 否 | 业务幂等键 |
+| `metadata` | 否 | JSON 对象，受大小和深度限制 |
 
-### 允许的 `event_type`（节选）
+常用事件类型：
 
-与 `Event::TYPES` 一致，常见：`page_view`、`cta_click`、`form_submit`、`checkout_click`、`order_created` 等。
+- `page_view`
+- `cta_click`
+- `form_start`
+- `product_view`
+- `checkout_click`
 
-> Demo 限制：持有有效 token 时可上报转化类事件。生产环境应收紧为服务端签发转化。
+`form_submit` 和 `order_created` 属于受控转化事件，公开页面不能通过普通事件接口直接伪造。外部 Events API 当前仍允许持有有效站点令牌的调用方上报这些事件；生产部署应根据调用方身份进一步限制。
+
+## 示例
+
+```json
+{
+  "site_token": "signed-token",
+  "event_type": "page_view",
+  "visitor_id": "visitor-123",
+  "session_id": "session-123",
+  "source": "search",
+  "device": "mobile",
+  "page_path": "/",
+  "section_uid": "section-uuid",
+  "idempotency_key": "event-123",
+  "metadata": {
+    "campaign": "summer"
+  }
+}
+```
 
 ## 成功响应
 
@@ -40,37 +63,53 @@ HTTP/1.1 202 Accepted
 ```
 
 ```json
-{ "id": 123, "status": "accepted" }
+{
+  "id": 123,
+  "status": "accepted"
+}
 ```
 
-幂等重放（同 key 同 fingerprint）仍返回已有事件的 `id`，状态同样为 `accepted`。
+使用相同幂等键和相同内容重复请求时，接口返回已有事件编号。
 
-## 错误码
+## 错误响应
 
 | HTTP | 场景 |
 |------|------|
-| `401 Unauthorized` | `site_token` 无效、过期或对应 ApiKey 已停用 |
-| `422 Unprocessable Content` | 缺字段、非法枚举、metadata 不合法、幂等 key 与 payload 指纹不匹配、未发布 section、实验/变体无效等 |
-| `429 Too Many Requests` | Rack::Attack 限流；响应 JSON 含 `retry_after`，并带 `Retry-After` 头 |
+| `401 Unauthorized` | 站点令牌无效、过期或对应密钥已停用 |
+| `422 Unprocessable Content` | 字段缺失、枚举无效、元数据不合法、区块未发布、实验版本无效或幂等冲突 |
+| `429 Too Many Requests` | 请求超过限流阈值 |
 
-示例：
-
-```json
-{ "error": "idempotency key payload mismatch" }
-```
+幂等键对应不同内容：
 
 ```json
-{ "error": "rate_limited", "message": "请求过于频繁，请稍后重试。", "retry_after": 42 }
+{
+  "error": "idempotency key payload mismatch"
+}
 ```
 
-## 归因语义（简）
+请求过于频繁：
 
-1. **显式**：`experiment_id` + `variant_key`（实验须为 active，且区块仍在已发布快照中）。
-2. **区块**：仅 `section_uid` 时，active 实验会新建分流；paused/completed（未应用胜出）只复用历史 assignment。
-3. **聚合**：`AggregationService` 在胜出版本应用后不再写入新的 conversion。
+```json
+{
+  "error": "rate_limited",
+  "message": "请求过于频繁，请稍后重试。",
+  "retry_after": 42
+}
+```
+
+限流响应同时包含 `Retry-After` 响应头。
+
+## 实验归因
+
+1. 同时提供 `experiment_id` 和 `variant_key` 时，使用显式归因；
+2. 只提供 `section_uid` 时，使用该区块的实验分配；
+3. 已暂停或已结束的实验只复用历史分配，不为新访客创建分配；
+4. 实验结果应用后，不再为该实验写入新的转化。
 
 ## 相关代码
 
 - `app/controllers/api/v1/events_controller.rb`
 - `app/services/events/ingestion_service.rb`
+- `app/services/events/metadata_sanitizer.rb`
+- `app/services/events/payload_fingerprint.rb`
 - `spec/requests/api/v1/events_spec.rb`

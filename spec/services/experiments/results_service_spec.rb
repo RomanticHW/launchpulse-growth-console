@@ -43,6 +43,7 @@ RSpec.describe Experiments::ResultsService do
 
     expect(result[:confidence]).to be >= 80
     expect(result[:label]).to eq("表现偏弱")
+    expect(result[:lift_label]).to eq("下降 66.67%")
   end
 
   it "requires enough traffic before labeling a winner" do
@@ -61,7 +62,7 @@ RSpec.describe Experiments::ResultsService do
 
     result = described_class.new(experiment).call.find { |row| row[:variant] == variant }
 
-    expect(result[:label]).to eq("数据不足")
+    expect(result[:label]).to eq("样本不足")
   end
 
   it "labels the control row as control" do
@@ -74,7 +75,7 @@ RSpec.describe Experiments::ResultsService do
 
     result = described_class.new(experiment).call.find { |row| row[:variant] == control }
 
-    expect(result[:label]).to eq("原版本")
+    expect(result[:label]).to eq("原始版本")
   end
 
   it "counts only the primary goal once per assignment" do
@@ -110,7 +111,7 @@ RSpec.describe Experiments::ResultsService do
 
     expect(result.fetch(:conversion_rate)).to eq(10.to_d)
     expect(result.fetch(:lift_vs_control)).to be_nil
-    expect(result.fetch(:lift_label)).to eq("从 0 基准起步")
+    expect(result.fetch(:lift_label)).to eq("原始版本暂无转化")
   end
 
   def event_for(site, visitor_id)

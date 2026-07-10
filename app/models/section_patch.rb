@@ -4,7 +4,7 @@ class SectionPatch < ApplicationRecord
   belongs_to :recommendation
   belongs_to :section
 
-  # 补丁快照是建议生成时的证据，后续应用或回滚只能移动 section.props，不能重写 before/after。
+  # 补丁保存修改前后内容，应用和撤回不能重写这两份记录。
   validates :props_diff, presence: true
   validates :status, inclusion: { in: STATUSES }
   validate :section_matches_recommendation

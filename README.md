@@ -1,55 +1,33 @@
 # LaunchPulse
 
-LaunchPulse 是一个用 Rails 8 做的全栈作品集项目，方向是“网站发布之后的增长控制台”，不是建站编辑器本身，也不是准备直接商用的生产平台。
+LaunchPulse 是一套面向网站运营场景的增长管理应用，用于管理页面版本、查看访问与转化数据、生成页面优化建议，并通过 A/B 实验验证改动效果。
 
-这个项目的目标是如何把 Rails 单体项目从数据模型、事务边界、后台任务、实时更新、前端交互到测试交付串成一条完整产品链路。它不追求覆盖真实 SaaS 的全部复杂度，而是把最能体现工程判断的边界做清楚、跑通、测住。
+项目同时提供后台控制台和公开站点。运营人员在后台调整草稿、创建实验并发布版本；访客在公开站点产生浏览、点击、表单提交和订单等事件；后台任务负责聚合数据并实时更新看板。
 
-LaunchPulse 关注的是页面发布之后那段更麻烦的事：站长怎么知道页面有没有带来转化、哪块内容该改、改完是不是真的有用、测试跑完了结果又怎么落回正式页面。这几步串不起来的话，前面做得再好看也没意义。
+当前仓库是一套可以完整运行的产品原型，适合本地体验和技术验证。它尚未接入真实支付、外部页面导入和完整的企业权限体系，不应直接作为生产环境 SaaS 部署。
 
-比起单看页面能不能点击，这个项目更值得看的地方是：链路是否完整、数据边界是否清楚、异常路径是否可验证、代码后续是否还能继续扩展。
+## 核心功能
 
-## 项目亮点
+- 站点与结构化页面区块管理。
+- 草稿预览、页面分析和优化建议。
+- 建议改动的预览、应用、撤回与忽略。
+- 基于页面区块的 A/B 实验和稳定访客分流。
+- 页面浏览、按钮点击、表单提交和订单事件采集。
+- 转化归因、实时事件流和指标看板。
+- 发布版本、内容差异对比和历史版本恢复。
+- 带签名令牌、幂等键和请求指纹的 Events API。
 
-- Rails 8 单体承载公开站点、后台控制台、事件 API、后台任务、实时看板和管理工作流。
-- `PublishedSnapshot` 把公开页面和后台草稿隔离，避免未发布内容提前流出。
-- 事件入口使用站点令牌、幂等键、payload 指纹和事务边界，避免重复上报、错内容复用和漏斗断层。
-- A/B 实验保存原版本和建议版本的完整渲染数据，后续发布不会污染正在运行的实验基线。
-- 转化归因按显式实验、区块、通用转化分层处理，避免把一次转化算到无关实验上。
-- Solid Queue 负责事件聚合和流量模拟，Solid Cable 把聚合结果实时推到控制台。
-- 发布快照带校验和，支持差异对比和安全回滚。
-- 测试覆盖核心业务边界，`bin/check-demo` 可一键完成测试、自动加载检查、样式构建和交付包验证。
+## 主要流程
 
-## 要解决的问题
+```text
+页面分析 -> 优化建议 -> 内容预览 -> 应用到草稿
+-> 创建实验 -> 采集访客事件 -> 查看实验结果
+-> 采用实验版本 -> 发布 -> 对比或恢复历史版本
+```
 
-很多小商家都会遇到同一件事：网站上线之后基本就是凭感觉改。
+页面区块是建议、实验和归因共同使用的业务单位。每个区块都有稳定标识，因此页面发布、访客事件和历史版本之间可以保持一致关联。
 
-举几个例子：
-
-- 咖啡店不知道首页那个按钮文案到底有没有带来预约。
-- 在线课程搞不清价格区块是不是让人犹豫了。
-- 小电商不确定商品区点击量和结账转化之间是不是被某个区块影响了。
-
-LaunchPulse 想把这几件事接成一条闭环：
-
-1. 公开站点只渲染已发布的版本，草稿不会提前流出去。
-2. 后台可以对页面区块跑一次审计，给出结构化的建议。
-3. 建议能落成一个区块补丁，可以预览、应用、也能回滚。
-4. 补丁可以直接拿去开 A/B 实验，原版本和推荐版本都会保留下来。
-5. 公开页面按访客做稳定分流，浏览、点击、表单、结账这些行为都会记事件。
-6. 后台任务把事件聚合起来，再实时推到控制台。
-7. 实验跑完，可以应用推荐版本，也可以明确说原版本更好、不采纳。
-8. 最后把草稿发布成一个不可变快照，需要的话能对比差异、能回滚。
-
-## 几个工程细节
-
-- 公开页面读的是 `PublishedSnapshot`，不是后台正在编辑的草稿——发布和草稿是分开的。
-- 实验创建的时候，原版本和推荐版本会各自保存一份完整渲染数据，后续再发布页面也不会影响正在跑的实验。
-- 商品区的结账不会算到价格区的实验头上，表单提交也不会被错误地记到第一个碰到的实验。
-- 事件接口的幂等键如果换了请求内容会被拒绝，不会静默地把新内容吞掉。
-- 草稿区块、已回滚的区块，不能再继续给实验数据“投票”。
-- 结账那条链路里，订单、点击事件、转化事件是同一个事务，要么一起成功要么一起回滚。
-- 发布快照带校验和，回滚前会先核对一遍，历史版本被动过手脚就不让回滚。
-- 看板数据来自后端事件聚合，聚合完成后再通过实时通道推给页面。
+公开站点只读取最新发布版本，不会直接展示后台草稿。实验创建时会保存原始版本和优化版本的完整区块数据，后续发布不会改变正在运行的实验内容。
 
 ## 技术栈
 
@@ -58,38 +36,11 @@ LaunchPulse 想把这几件事接成一条闭环：
 - PostgreSQL
 - Hotwire（Turbo、Stimulus、Turbo Streams）
 - Tailwind CSS
-- Solid Queue 跑后台任务
-- Solid Cable 做跨进程的实时更新
-- RSpec、FactoryBot、Capybara 写测试
+- Solid Queue
+- Solid Cable
+- RSpec、FactoryBot、Capybara
 
-用 Rails 单体而不是拆前后端，是因为这个项目的复杂度本来就集中在业务状态、事务、后台任务和实时更新上，不在前端状态管理。把公开站点、后台、事件接口、任务和实时刷新都放同一个工程里，路径短，看代码也更方便。
-
-## 文档
-
-`readme/` 目录下是中文说明：
-
-- [产品概览](readme/00-overview.md)
-- [演示流程](readme/01-demo-flow.md)
-- [系统架构](readme/02-architecture.md)
-- [增长闭环](readme/03-growth-loop.md)
-- [数据模型与归因](readme/04-data-model-and-attribution.md)
-- [公开站点与事件接口](readme/05-public-runtime-and-event-api.md)
-- [发布与实验系统](readme/06-publishing-and-experiments.md)
-- [运行与质量保障](readme/07-running-and-quality.md)
-- [限制与后续路线](readme/08-limitations-and-roadmap.md)
-- [技术摘要](readme/09-technical-summary.md)
-- [演示指南](docs/demo-guide.md)
-- [技术问答](docs/technical-qa.md)
-- [提交说明](docs/submission-note.md)
-- [Events API 简表](docs/api-events.md)
-
-这些文档大致是按“产品问题 -> 设计取舍 -> 代码落点 -> 怎么验证”写的。不熟 Rails 也能先从产品链路看懂价值，想深挖再顺着文档里提到的服务对象和测试文件去翻代码。
-
-如果时间有限，建议先看 [技术摘要](readme/09-technical-summary.md)，然后直接看这三个文件：
-
-- `app/services/experiments/lifecycle_service.rb`
-- `app/services/analytics/aggregation_service.rb`
-- `app/services/events/ingestion_service.rb`
+Rails 单体同时承载后台、公开站点、事件接口、后台任务和实时更新。核心业务规则集中在服务对象中，控制器主要负责认证、参数处理和响应。
 
 ## 本地运行
 
@@ -100,8 +51,6 @@ bin/rails db:prepare
 bin/rails db:seed
 bin/dev
 ```
-
-第一行会把依赖安装到项目内的 `vendor/bundle`，避免写入系统或 Homebrew 的 Ruby gem 目录。这个目录会被 `.gitignore` 和打包脚本排除。
 
 登录账号：
 
@@ -118,65 +67,74 @@ password
 /s/clearleaf-skincare
 ```
 
-三个站点分别对应本地门店、在线课程、轻电商这几类常见场景。
+三个站点分别模拟社区咖啡店、在线课程和基础护肤品牌。
 
-## 建议怎么看
+如需在公开页查看访客编号和实验分配信息，可以使用调试模式启动：
 
-1. 登录后台，任选一个站点。
-2. 看站点详情页：左边区块树，中间实时预览，右边是建议和实验。
-3. 点 `生成诊断` 生成建议。
-4. 预览一下补丁，再应用到草稿。
-5. 从补丁创建实验，确认原版本和推荐版本都保存下来了。
-6. 打开对应的公开页面，提交个表单或者点一下结账。
-7. 回后台看实时事件流和指标有没有变化。
-8. 点 `模拟 1000 位访客`，让后台任务批量生成访客数据。
-9. 完成实验，选应用推荐版本，或者保留原版本。
-10. 发布当前草稿，打开差异页面看看改了什么。
-11. 执行一次回滚，确认历史版本能恢复回来。
+```bash
+DEMO_DEBUG=true bin/dev
+```
 
-这条路径基本覆盖了项目的核心能力：智能建议、结构化补丁、实验分流、事件采集、转化归因、实时分析、发布快照、版本回滚。
+## 功能体验
 
-## 关键代码位置
+1. 登录后台并打开任意站点。
+2. 点击 `分析页面`，查看与具体区块关联的优化建议。
+3. 预览建议内容，再应用到草稿。
+4. 从优化建议创建对照实验。
+5. 打开公开站点，提交表单或选择商品、课程方案。
+6. 返回后台查看事件流、指标和实验数据。
+7. 在实验数据满足判断条件后结束实验，并采用其中一个版本。
+8. 发布当前草稿，在版本记录中查看内容差异或恢复历史版本。
 
-- `app/services/ai/growth_audit_service.rb` — 生成确定性的增长建议
-- `app/services/experiments/lifecycle_service.rb` — 实验创建、暂停、完成、应用胜出版本
-- `app/services/experiments/assignment_service.rb` — 按访客做稳定分流
-- `app/services/events/ingestion_service.rb` — 外部事件接口，令牌校验、幂等、归因
-- `app/services/analytics/aggregation_service.rb` — 聚合事件、记录转化
-- `app/services/analytics/dashboard_broadcaster.rb` — 实时刷新后台看板
-- `app/services/sites/snapshot_service.rb` — 发布、差异对比、回滚
-- `app/services/sites/published_runtime.rb` — 公开页面读取已发布版本
-- `app/controllers/public/checkouts_controller.rb` — 商品和价格方案的演示结账
-- `app/views/public/sites/show.html.erb` — 公开页面渲染入口
+`模拟 1000 位访客` 用于快速生成分析数据。模拟任务只创建访客事件，不会批量生成联系人、表单提交或订单等业务记录。
 
-## 测试和检查
+## 文档
 
-一键跑完：
+- [产品概览](readme/00-overview.md)
+- [功能体验流程](readme/01-demo-flow.md)
+- [系统架构](readme/02-architecture.md)
+- [页面优化与实验流程](readme/03-growth-loop.md)
+- [数据模型与转化归因](readme/04-data-model-and-attribution.md)
+- [公开站点与事件接口](readme/05-public-runtime-and-event-api.md)
+- [发布与实验管理](readme/06-publishing-and-experiments.md)
+- [运行、部署与质量检查](readme/07-running-and-quality.md)
+- [当前限制与后续规划](readme/08-limitations-and-roadmap.md)
+- [技术摘要](readme/09-technical-summary.md)
+- [功能体验指南](docs/demo-guide.md)
+- [Events API](docs/api-events.md)
+- [技术问答](docs/technical-qa.md)
+- [项目范围与交付说明](docs/project-scope.md)
+
+## 关键代码
+
+- `app/services/ai/growth_audit_service.rb`：根据页面区块生成结构化优化建议。
+- `app/services/experiments/lifecycle_service.rb`：管理实验创建、暂停、结束和结果应用。
+- `app/services/experiments/assignment_service.rb`：为访客稳定分配实验版本。
+- `app/services/events/ingestion_service.rb`：处理外部事件认证、幂等和归因。
+- `app/services/analytics/aggregation_service.rb`：聚合事件并记录转化。
+- `app/services/sites/snapshot_service.rb`：发布版本、对比差异和恢复历史内容。
+- `app/services/sites/published_runtime.rb`：读取公开站点使用的已发布内容。
+
+## 测试与检查
+
+完整检查：
 
 ```bash
 bin/check-demo
 ```
 
-单独跑：
+该命令会运行 RSpec、Zeitwerk 检查、Tailwind 构建和交付包校验。
+
+其他检查：
 
 ```bash
-bundle exec rspec
 bundle exec rubocop
 bundle exec brakeman --no-pager
 bundle exec bundler-audit
 bin/importmap audit
 ```
 
-测试主要盯着这几处容易翻车的边界：
-
-- 公开页面不会渲染草稿。
-- 实验原版本不会因为后续发布悄悄漂移。
-- 隐藏区块不能再给实验产生归因数据。
-- 幂等键对应的内容变了会被拒绝，而不是静默返回旧结果。
-- 一个转化不会被算到无关的实验上。
-- 订单和转化事件保持事务一致。
-- 快照回滚前会校验完整性。
-- 从跑审计到创建实验这条用户路径能走通。
+测试重点覆盖草稿隔离、实验基线、事件幂等、区块可见性、转化归因、事务一致性和版本恢复等业务边界。
 
 ## 打包
 
@@ -184,20 +142,15 @@ bin/importmap audit
 bin/package-demo
 ```
 
-打包脚本会把 `.git`、`tmp`、`log`、`storage`、本地依赖缓存、生成的资产还有 `config/master.key` 都排除掉，压缩包里只留代码、配置、测试和文档。
-
-请用 `bin/package-demo` 生成交付包，不要直接用 Finder 或系统文件管理器压缩整个项目目录。直接压缩容易把 `.git`、`__MACOSX`、日志、缓存或本地存储一起带进去。
-
-`readme/` 下的文件名使用 ASCII，内容仍然是中文。这样在不同系统和解压工具里更稳，不会因为 zip 文件名编码问题影响阅读。
+脚本会排除 Git 数据、本地工作树、临时文件、日志、上传文件、本地依赖缓存、构建产物和密钥，并对压缩包内容进行二次检查。
 
 ## 当前限制
 
-演示能力和生产能力没有混在一起：
+- 页面分析由固定规则生成，不调用外部模型服务。
+- 商品和课程方案只创建示例订单，不处理真实支付。
+- 实验结果使用近似统计，只适合观察趋势。
+- 权限仅覆盖 `owner`、`marketer` 和 `viewer` 三类基础角色。
+- Events API 以单条写入为主，尚未提供批量采集和完整可靠消息机制。
+- 公开站点当前只开放首页路径。
 
-- 智能建议是确定性输出，不调用外部模型。
-- 结账只创建演示订单，没接真实支付。
-- 实验统计是透明的近似值，不是完整的统计平台。
-- 权限系统还比较简单。
-- 事件接口目前是单条写入，生产环境要再加批量上报、限流、采样和监控。
-
-详细说明看 [限制与后续路线](readme/08-limitations-and-roadmap.md)。
+详细范围见[当前限制与后续规划](readme/08-limitations-and-roadmap.md)。

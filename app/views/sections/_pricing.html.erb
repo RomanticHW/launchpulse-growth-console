@@ -1,6 +1,6 @@
 <section class="px-6 py-14 text-[var(--site-ink)] sm:px-8" style="background: color-mix(in srgb, var(--site-surface) 72%, var(--site-base));">
   <div class="mx-auto max-w-6xl">
-    <h2 class="font-site-display text-3xl font-semibold tracking-tight"><%= props["headline"] || "清晰定价" %></h2>
+    <h2 class="font-site-display text-3xl font-semibold tracking-tight"><%= props["headline"] || "选择适合你的方案" %></h2>
     <div class="mt-7 grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-4">
     <% plans = Array(props["plans"]) %>
     <% plans.each_with_index do |plan, index| %>

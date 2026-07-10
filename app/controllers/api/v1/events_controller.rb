@@ -14,7 +14,7 @@ module Api
 
       def event_params
         permitted = params.permit(:site_token, :event_type, :visitor_id, :session_id, :source, :device, :section_uid, :experiment_id, :variant_key, :page_path, :occurred_at, :idempotency_key)
-        # metadata 的结构校验集中交给 MetadataSanitizer；controller 只控制顶层业务字段。
+        # `MetadataSanitizer` 统一校验元数据结构，控制器只筛选顶层业务字段。
         attrs = permitted.to_h
         attrs.merge!(metadata: params[:metadata]) if params.key?(:metadata)
         attrs

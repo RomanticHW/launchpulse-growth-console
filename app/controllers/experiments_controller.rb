@@ -20,14 +20,14 @@ class ExperimentsController < ApplicationController
 
   def resume
     experiment = @site.experiments.find(params[:id])
-    perform_lifecycle!(experiment.section_id, notice: "实验已继续。") do
+    perform_lifecycle!(experiment.section_id, notice: "实验已恢复运行。") do
       lifecycle.resume!(experiment:, user: current_user, account: current_account)
     end
   end
 
   def complete
     experiment = @site.experiments.find(params[:id])
-    perform_lifecycle!(experiment.section_id, notice: "实验已完成。") do
+    perform_lifecycle!(experiment.section_id, notice: "实验已结束。") do
       lifecycle.complete!(experiment:, user: current_user, account: current_account)
     end
   end
@@ -35,7 +35,7 @@ class ExperimentsController < ApplicationController
   def apply_winner
     experiment = @site.experiments.find(params[:id])
     variant = experiment.variants.find(params[:variant_id])
-    perform_lifecycle!(experiment.section_id, notice: "胜出版本已应用。") do
+    perform_lifecycle!(experiment.section_id, notice: "实验结果已应用。") do
       lifecycle.apply_winner!(experiment:, variant:, user: current_user, account: current_account)
     end
   end

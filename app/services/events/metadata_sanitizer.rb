@@ -14,7 +14,7 @@ module Events
       raise InvalidMetadata, "metadata must be an object" if @require_hash_root && !hash_like?(@value)
 
       sanitized = sanitize(@value, depth: 0)
-      # 附加数据来自公开页面或外部接口，先限制体积和深度，比等到数据库序列化失败更可控。
+      # 元数据属于开放输入，写入前限制大小和嵌套深度。
       raise InvalidMetadata, "metadata is too large" if sanitized.to_json.bytesize > @limit_bytes
 
       sanitized

@@ -87,7 +87,7 @@ module SiteThemeHelper
     "form_start" => "开始填写",
     "form_submit" => "提交表单",
     "cta_click" => "点击按钮",
-    "checkout_click" => "点击结账",
+    "checkout_click" => "点击购买",
     "order_created" => "创建订单"
   }.freeze
 
@@ -98,8 +98,8 @@ module SiteThemeHelper
   SOURCE_LABELS = {
     "direct" => "直接访问",
     "search" => "搜索",
-    "social" => "社媒",
-    "referral" => "推荐",
+    "social" => "社交媒体",
+    "referral" => "外部推荐",
     "email" => "邮件",
     "paid" => "付费推广"
   }.freeze
@@ -117,11 +117,11 @@ module SiteThemeHelper
     "tested" => "已测试",
     "active" => "运行中",
     "paused" => "已暂停",
-    "completed" => "已完成",
+    "completed" => "已结束",
     "applied" => "已应用",
     "dismissed" => "已忽略",
     "superseded" => "已替换",
-    "reverted" => "已回滚"
+    "reverted" => "已撤回"
   }.freeze
 
   PRODUCT_ICON_KEYWORDS = {
