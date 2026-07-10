@@ -8,22 +8,24 @@ RSpec.describe "bin/package-demo" do
 
   def package_entries(source_root, git_shape:)
     Dir.mktmpdir("package-demo-checkout") do |tmpdir|
-      checkout = Pathname(tmpdir).join("checkout")
+      checkout = create_checkout(source_root, tmpdir, git_shape:)
       output = Pathname(tmpdir).join("launchpulse-demo.zip")
-      FileUtils.mkdir_p(checkout.join("bin"))
-      FileUtils.mkdir_p(checkout.join("docs/superpowers"))
-      FileUtils.cp(source_root.join("bin/package-demo"), checkout.join("bin/package-demo"))
-      FileUtils.cp(source_root.join("docs/demo-guide.md"), checkout.join("docs/demo-guide.md"))
-      File.write(checkout.join("docs/superpowers/process-note.md"), "internal process note")
-      create_git_metadata(checkout, git_shape)
 
       stdout, stderr, status = Open3.capture3("bash", checkout.join("bin/package-demo").to_s, output.to_s)
       expect(status).to be_success, -> { "Package failed:\n#{stdout}\n#{stderr}" }
-
-      entries, list_stderr, list_status = Open3.capture3("unzip", "-Z1", output.to_s)
-      expect(list_status).to be_success, -> { "Could not read package:\n#{list_stderr}" }
-      entries.lines(chomp: true)
+      zip_entries(output)
     end
+  end
+
+  def create_checkout(source_root, tmpdir, git_shape:)
+    checkout = Pathname(tmpdir).join("checkout")
+    FileUtils.mkdir_p(checkout.join("bin"))
+    FileUtils.mkdir_p(checkout.join("docs/superpowers"))
+    FileUtils.cp(source_root.join("bin/package-demo"), checkout.join("bin/package-demo"))
+    FileUtils.cp(source_root.join("docs/demo-guide.md"), checkout.join("docs/demo-guide.md"))
+    File.write(checkout.join("docs/superpowers/process-note.md"), "internal process note")
+    create_git_metadata(checkout, git_shape)
+    checkout
   end
 
   def create_git_metadata(checkout, git_shape)
@@ -51,9 +53,22 @@ RSpec.describe "bin/package-demo" do
     expect(status).to be_success, -> { "Could not create test package:\n#{stdout}\n#{stderr}" }
   end
 
+  def zip_entries(path)
+    script = <<~PYTHON
+      import sys
+      import zipfile
+
+      with zipfile.ZipFile(sys.argv[1]) as archive:
+          print("\\n".join(archive.namelist()))
+    PYTHON
+    stdout, stderr, status = Open3.capture3("python3", "-c", script, path.to_s)
+    expect(status).to be_success, -> { "Could not read package:\n#{stderr}" }
+    stdout.lines(chomp: true)
+  end
+
   def package_verifier(source_root)
     source = File.read(source_root.join("bin/package-demo"))
-    match = source.match(/python3 - "\$OUTPUT" <<'PY'\n(?<script>.*?)\nPY\n/m)
+    match = source.match(/python3 - "\$(?:OUTPUT|TEMP_OUTPUT)" <<'PY'\n(?<script>.*?)\nPY\n/m)
     raise "Package verifier was not found" unless match
 
     match[:script]
@@ -108,6 +123,38 @@ RSpec.describe "bin/package-demo" do
 
       expect(status).not_to be_success
       expect(stderr).to include("Unexpected local artifacts in package: .git")
+    end
+  end
+
+  it "rejects an injected internal process document from the package manifest" do
+    Dir.mktmpdir("package-demo-manifest") do |tmpdir|
+      package = Pathname(tmpdir).join("internal-document.zip")
+      create_zip(package, "docs/superpowers/process-note.md")
+
+      _stdout, stderr, status = verify_package(project_root, package)
+
+      expect(status).not_to be_success
+      expect(stderr).to include("Unexpected local artifacts in package: docs/superpowers/process-note.md")
+    end
+  end
+
+  it "leaves no package artifacts when verification fails" do
+    Dir.mktmpdir("package-demo-failure") do |tmpdir|
+      checkout = create_checkout(project_root, tmpdir, git_shape: :directory)
+      script_path = checkout.join("bin/package-demo")
+      script = File.read(script_path)
+      exclusion = %(  -x "docs/superpowers/*" \\\n)
+      expect(script).to include(exclusion)
+      File.write(script_path, script.sub(exclusion, ""))
+      output = Pathname(tmpdir).join("launchpulse-demo.zip")
+      File.write(output, "stale package")
+
+      stdout, stderr, status = Open3.capture3("bash", script_path.to_s, output.to_s)
+
+      expect(status).not_to be_success
+      expect("#{stdout}\n#{stderr}").to include("Unexpected local artifacts in package: docs/superpowers/")
+      expect(output).not_to exist
+      expect(Dir.glob(File.join(tmpdir, ".package-demo.*"))).to be_empty
     end
   end
 end

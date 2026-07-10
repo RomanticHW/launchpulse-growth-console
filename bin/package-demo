@@ -5,9 +5,22 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT="${1:-"$ROOT/../launchpulse-demo.zip"}"
 
 cd "$ROOT"
+OUTPUT_DIR="$(dirname "$OUTPUT")"
+TEMP_DIR="$(mktemp -d "$OUTPUT_DIR/.package-demo.XXXXXX")"
+TEMP_OUTPUT="$TEMP_DIR/package.zip"
+
+cleanup() {
+  rm -rf "$TEMP_DIR"
+}
+
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 rm -f "$OUTPUT"
 
-zip -r "$OUTPUT" . \
+zip -r "$TEMP_OUTPUT" . \
   -x ".git" \
   -x ".git/*" \
   -x ".kamal/*" \
@@ -27,7 +40,7 @@ zip -r "$OUTPUT" . \
   -x ".bundle/*" \
   -x "coverage/*"
 
-python3 - "$OUTPUT" <<'PY'
+python3 - "$TEMP_OUTPUT" <<'PY'
 import sys
 import zipfile
 
@@ -60,6 +73,8 @@ if non_ascii_readmes:
 if blocked:
     raise SystemExit("Unexpected local artifacts in package: " + ", ".join(blocked))
 PY
+
+mv -f "$TEMP_OUTPUT" "$OUTPUT"
 
 echo "Created $OUTPUT"
 echo "Package verification passed."
