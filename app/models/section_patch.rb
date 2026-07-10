@@ -10,48 +10,60 @@ class SectionPatch < ApplicationRecord
   validate :section_matches_recommendation
 
   def apply!
-    return self if status == "applied"
-    unless %w[pending reverted].include?(status)
-      errors.add(:base, "#{status.humanize} patches cannot be applied")
-      raise ActiveRecord::RecordInvalid, self
-    end
+    section.site.with_lock do
+      with_lock do
+        if status == "applied"
+          self
+        else
+          unless %w[pending reverted].include?(status)
+            errors.add(:base, "#{status.humanize} patches cannot be applied")
+            raise ActiveRecord::RecordInvalid, self
+          end
 
-    transaction do
-      target_props = after_props.presence || section.props.deep_merge(props_diff)
-      update!(
-        status: "applied",
-        applied: true,
-        before_props: before_props.presence || section.props,
-        after_props: target_props,
-        applied_at: Time.current,
-        reverted_at: nil
-      )
-      section.update!(props: target_props)
-      recommendation.update!(status: "applied", applied_at: Time.current)
+          current_section = section.reload
+          target_props = after_props.presence || current_section.props.deep_merge(props_diff)
+          update!(
+            status: "applied",
+            applied: true,
+            before_props: before_props.presence || current_section.props,
+            after_props: target_props,
+            applied_at: Time.current,
+            reverted_at: nil
+          )
+          current_section.update!(props: target_props)
+          recommendation.update!(status: "applied", applied_at: Time.current)
+        end
+      end
     end
   end
 
   def revert!
-    unless status == "applied" && applied_at.present?
-      errors.add(:base, "Patch has not been applied")
-      raise ActiveRecord::RecordInvalid, self
-    end
+    section.site.with_lock do
+      with_lock do
+        unless status == "applied" && applied_at.present?
+          errors.add(:base, "Patch has not been applied")
+          raise ActiveRecord::RecordInvalid, self
+        end
 
-    transaction do
-      section.update!(props: before_props)
-      update!(status: "reverted", applied: false, reverted_at: Time.current)
-      recommendation.update!(status: "open", applied_at: nil)
+        section.update!(props: before_props)
+        update!(status: "reverted", applied: false, reverted_at: Time.current)
+        recommendation.update!(status: "open", applied_at: nil)
+      end
     end
   end
 
   def dismiss!
-    unless %w[pending reverted].include?(status)
-      errors.add(:base, "#{status.humanize} patches cannot be dismissed")
-      raise ActiveRecord::RecordInvalid, self
-    end
+    section.site.with_lock do
+      with_lock do
+        unless %w[pending reverted].include?(status)
+          errors.add(:base, "#{status.humanize} patches cannot be dismissed")
+          raise ActiveRecord::RecordInvalid, self
+        end
 
-    update!(status: "dismissed")
-    recommendation.update!(status: "dismissed", dismissed_at: Time.current)
+        update!(status: "dismissed")
+        recommendation.update!(status: "dismissed", dismissed_at: Time.current)
+      end
+    end
   end
 
   private

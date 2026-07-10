@@ -49,6 +49,17 @@ RSpec.describe Sites::SnapshotService do
     expect { described_class.new(site).rollback!(reloaded_snapshot, user: nil) }.not_to raise_error
   end
 
+  it "accepts a legacy payload-order checksum" do
+    site = create(:site, status: "draft")
+    page = create(:page, site:)
+    create(:section, page:, props: { "headline" => "Published", "items" => [ { "label" => "One", "value" => 1 } ] })
+    snapshot = described_class.new(site).publish!(user: nil, note: "Version 1")
+    snapshot.reload
+    snapshot.update_column(:checksum, Digest::SHA256.hexdigest(snapshot.payload.to_json))
+
+    expect { described_class.new(site).rollback!(snapshot.reload, user: nil) }.not_to raise_error
+  end
+
   it "uses the same checksum for the same payload with different hash key order" do
     service = described_class.new(create(:site))
     payload = {
@@ -108,6 +119,44 @@ RSpec.describe Sites::SnapshotService do
     snapshot.update_column(:checksum, "tampered")
 
     expect { described_class.new(site).rollback!(snapshot, user: nil) }.to raise_error(Sites::SnapshotService::ChecksumMismatch)
+  end
+
+  it "rejects rollback when the snapshot checksum is blank" do
+    site = create(:site, status: "published")
+    page = create(:page, site:)
+    create(:section, page:, kind: "hero", position: 0, props: { "headline" => "Published" })
+    snapshot = described_class.new(site).publish!(user: nil, note: "Version 1")
+    service = described_class.new(site)
+
+    [ nil, "", " ", "\t" ].each do |blank_checksum|
+      snapshot.checksum = blank_checksum
+
+      expect { service.rollback!(snapshot, user: nil) }.to raise_error(Sites::SnapshotService::ChecksumMismatch)
+    end
+  end
+
+  it "verifies the checksum while holding the site lock" do
+    site = create(:site, status: "published")
+    page = create(:page, site:)
+    create(:section, page:, kind: "hero", position: 0, props: { "headline" => "Published" })
+    snapshot = described_class.new(site).publish!(user: nil, note: "Version 1")
+    service = described_class.new(site)
+    site_lock_held = false
+
+    expect(site).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      original.call(*args) do
+        site_lock_held = true
+        block.call
+      ensure
+        site_lock_held = false
+      end
+    end
+    expect(service).to receive(:verify_checksum!).and_wrap_original do |original, *args|
+      expect(site_lock_held).to be(true)
+      original.call(*args)
+    end
+
+    service.rollback!(snapshot, user: nil)
   end
 
   it "rejects rollback when a reloaded snapshot payload was changed" do

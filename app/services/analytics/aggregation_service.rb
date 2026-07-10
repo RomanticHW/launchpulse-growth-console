@@ -11,7 +11,7 @@ module Analytics
       return if @event.aggregated_at?
 
       ActiveRecord::Base.transaction do
-        # 先锁定事件并检查聚合时间，确保重复任务不会重复写入统计和转化。
+        # 聚合任务可能被重试，先锁住事件再判断 aggregated_at，保证 rollup 和 conversion 只写一次。
         @event.lock!
         return if @event.aggregated_at?
 
@@ -57,8 +57,9 @@ module Analytics
     end
 
     def attributed_assignments_for_conversion
-      # 归因顺序为显式实验、页面区块、通用转化，避免一次转化计入无关实验。
-      # 显式归因字段不完整时直接拒绝，不能降级为通用归因。
+      # 转化归因先看显式实验，再看区块标识，最后才按通用转化处理。
+      # 这个顺序能避免商品区结账被同时算进首屏、价格区等无关实验。
+      # 半条显式归因比没有归因更危险，不能继续走 generic 兜底。
       return [] if partial_explicit_attribution?
 
       explicit_assignment_for_event || section_assignment_for_event || generic_assignments_for_event
@@ -97,8 +98,9 @@ module Analytics
       experiment = @site.experiments.open_for_conversion.joins(:section).find_by(sections: { uid: section_uid })
       return [] unless experiment
 
-      # 聚合服务不创建实验分配；分配必须在页面渲染或事件写入阶段产生。
-      # 已暂停或已结束的实验只接受已有分配。
+      # 聚合服务不补造曝光；assignment 应该由公开运行时或事件入口在事件创建前完成。
+      # 否则后台导入一条转化事件会倒推出一次访客分流，口径会变得不清楚。
+      # 暂停/完成后只接受已有 assignment，不给新访客补分流。
       assignment = assignment_for(experiment)
       if assignment && @event.experiment_id.blank?
         @event.update!(experiment:, variant: assignment.variant, variant_key: assignment.variant.key)
@@ -107,7 +109,7 @@ module Analytics
     end
 
     def generic_assignments_for_event
-      # 缺少区块信息时，只向目标类型匹配的实验记录转化。
+      # 没有区块上下文时只给目标匹配的实验记转化，避免 form_submit 实验里出现 order_created 噪声记录。
       @site.experiments.open_for_conversion.includes(:assignments).filter_map do |experiment|
         next unless experiment.primary_goal == @event.event_type || experiment.primary_goal == "any_conversion"
 
@@ -122,12 +124,9 @@ module Analytics
       return nil unless experiment.active?
       return nil unless @event.experiment_id == experiment.id && @event.variant
 
-      experiment.assignments.create_or_find_by!(visitor_id: @event.visitor_id) do |record|
-        record.variant = @event.variant
-      end
-    rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
-      # 并发重试仍需执行版本匹配，防止转化写入错误分配。
-      matching_assignment_or_nil(experiment.assignments.find_by!(visitor_id: @event.visitor_id))
+      Experiments::AssignmentService.new(experiment).assign(@event.visitor_id, variant: @event.variant)
+    rescue Experiments::AssignmentService::VariantConflict
+      nil
     end
 
     def matching_assignment_or_nil(assignment)

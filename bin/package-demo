@@ -1,68 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 OUTPUT="${1:-"$ROOT/../launchpulse-demo.zip"}"
 
-cd "$ROOT"
-rm -f "$OUTPUT"
-
-zip -rqD "$OUTPUT" . \
-  -x ".git/*" \
-  -x ".worktrees/" \
-  -x ".worktrees/*" \
-  -x "worktrees/" \
-  -x "worktrees/*" \
-  -x ".kamal/*" \
-  -x "__MACOSX/*" \
-  -x "*.DS_Store" \
-  -x ".DS_Store" \
-  -x "tmp/*" \
-  -x "log/*" \
-  -x "storage/*" \
-  -x "output/*" \
-  -x ".playwright-cli/*" \
-  -x "vendor/bundle/*" \
-  -x "public/assets/*" \
-  -x "app/assets/builds/*" \
-  -x "config/master.key" \
-  -x ".bundle/*" \
-  -x "coverage/*"
-
-python3 - "$OUTPUT" <<'PY'
+OUTPUT="$(python3 - "$ROOT" "$OUTPUT" <<'PY'
+import os
 import sys
-import zipfile
 
-with zipfile.ZipFile(sys.argv[1]) as archive:
-    names = archive.namelist()
-    non_ascii_readmes = [
-        name for name in names
-        if name.startswith("readme/") and any(ord(char) > 127 for char in name)
-    ]
-    blocked = []
-    for name in names:
-        if (
-            name == ".git/" or name.startswith(".git/") or
-            name == ".worktrees/" or name.startswith(".worktrees/") or
-            name == "worktrees/" or name.startswith("worktrees/") or
-            name == "__MACOSX/" or name.startswith("__MACOSX/") or
-            name.endswith(".DS_Store") or
-            name == "tmp/" or name.startswith("tmp/") or
-            name == "log/" or name.startswith("log/") or
-            name == "storage/" or name.startswith("storage/") or
-            name == "output/" or name.startswith("output/") or
-            name == ".playwright-cli/" or name.startswith(".playwright-cli/") or
-            name == "config/master.key" or
-            name == "public/assets/" or name.startswith("public/assets/") or
-            name == "app/assets/builds/" or name.startswith("app/assets/builds/")
-        ):
-            blocked.append(name)
+root = os.path.realpath(sys.argv[1])
+output = os.path.realpath(os.path.abspath(sys.argv[2]))
 
-if non_ascii_readmes:
-    raise SystemExit("Non-ASCII readme filenames in package: " + ", ".join(non_ascii_readmes))
-if blocked:
-    raise SystemExit("Unexpected local artifacts in package: " + ", ".join(blocked))
+if os.path.commonpath([root, output]) == root:
+    raise SystemExit(f"Output path must be outside project root: {output}")
+
+print(output)
 PY
+)"
+OUTPUT_DIR="$(dirname "$OUTPUT")"
+
+rm -f "$OUTPUT"
+TEMP_DIR="$(mktemp -d "$OUTPUT_DIR/.package-demo.XXXXXX")"
+TEMP_OUTPUT="$TEMP_DIR/package.zip"
+
+cleanup() {
+  rm -rf "$TEMP_DIR"
+}
+
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+python3 "$ROOT/bin/package_demo.py" build --root "$ROOT" --output "$TEMP_OUTPUT"
+python3 "$ROOT/bin/package_demo.py" verify --archive "$TEMP_OUTPUT"
+
+mv -f "$TEMP_OUTPUT" "$OUTPUT"
 
 echo "Created $OUTPUT"
 echo "Package verification passed."

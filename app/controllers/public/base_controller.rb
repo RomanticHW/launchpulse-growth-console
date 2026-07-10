@@ -1,6 +1,9 @@
 module Public
   class BaseController < ActionController::Base
     HiddenSectionError = Class.new(StandardError)
+    InvalidRequestToken = Class.new(StandardError)
+    RequestFingerprintMismatch = Class.new(StandardError)
+    REQUEST_TOKEN_FORMAT = /\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/
     allow_browser versions: :modern
 
     private
@@ -40,13 +43,42 @@ module Public
       Site.find_by!(slug: params[:slug], status: "published")
     end
 
+    def validated_request_token
+      raw_token = params[:request_token]
+      return nil if raw_token.blank?
+
+      unless raw_token.is_a?(String) && raw_token.length <= 100 && raw_token.match?(REQUEST_TOKEN_FORMAT)
+        raise InvalidRequestToken, "请求标识格式不正确"
+      end
+
+      raw_token
+    end
+
+    def request_token_constraint_violation?(error, expected_constraint_name)
+      database_error = error.cause
+      return false unless defined?(PG::Error) && database_error.is_a?(PG::Error)
+
+      result = database_error.result
+      return false unless result
+
+      result.error_field(PG::Result::PG_DIAG_CONSTRAINT_NAME) == expected_constraint_name
+    end
+
+    def ensure_matching_request_fingerprint!(record, request_fingerprint)
+      return record if record.request_fingerprint == request_fingerprint
+
+      raise RequestFingerprintMismatch, "请求标识已用于不同内容"
+    end
+
     def assignment_map(site, visible_section_uids: nil)
-      site.experiments.active.includes(:variants, :section).each_with_object({}) do |experiment, result|
+      site.experiments.active.includes(:variants, :section).order(:id).each_with_object({}) do |experiment, result|
         next unless experiment.section
         # 公开入口只接受最新发布版本中的区块，草稿区块不能产生访客数据。
         next if visible_section_uids && !visible_section_uids.include?(experiment.section.uid)
 
         assignment = Experiments::AssignmentService.new(experiment).assign(visitor_id)
+        next unless assignment
+
         result[experiment.section.uid] = assignment
         result[experiment.section_id] = assignment
       end
@@ -58,7 +90,8 @@ module Public
 
       experiment = site.experiments.accepting_new_assignments.joins(:section).find_by(sections: { uid: section_uid })
       if experiment
-        return Experiments::AssignmentService.new(experiment).assign(visitor_id)
+        assignment = Experiments::AssignmentService.new(experiment).assign(visitor_id)
+        return assignment if assignment
       end
 
       # Late conversion path: paused/completed unresolved experiments keep historical assignment only.
@@ -112,7 +145,7 @@ module Public
     end
 
     def enqueue_public_event!(event)
-      AggregateEventJob.perform_later(event.id)
+      Events::AggregationDispatcher.call(event)
     end
 
     def metadata_hash!(metadata)

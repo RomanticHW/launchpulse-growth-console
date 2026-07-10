@@ -16,9 +16,9 @@ module Sites
     end
 
     def rollback!(snapshot, user:)
-      verify_checksum!(snapshot)
-
       @site.with_lock do
+        verify_checksum!(snapshot)
+
         # Re-check under the site lock so a concurrent launch cannot slip in between
         # the unresolved guard and the structural restore / re-publish.
         if unresolved_experiments?
@@ -122,7 +122,9 @@ module Sites
     end
 
     def verify_checksum!(snapshot)
-      return if snapshot.checksum.blank?
+      if snapshot.checksum.blank?
+        raise ChecksumMismatch, "Snapshot checksum is missing"
+      end
 
       expected_checksums = [ checksum_for(snapshot.payload), legacy_checksum_for(snapshot.payload) ].uniq
       return if expected_checksums.any? { |expected| secure_compare_digest(snapshot.checksum, expected) }

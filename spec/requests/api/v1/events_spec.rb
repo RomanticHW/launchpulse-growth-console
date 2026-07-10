@@ -406,6 +406,32 @@ RSpec.describe "Event API" do
     end.to have_enqueued_job(AggregateEventJob).once
   end
 
+  it "retries dispatch on an idempotent replay after the initial enqueue fails" do
+    site = create(:site)
+    token = signed_token_for(site)
+    request_params = {
+      site_token: token,
+      event_type: "page_view",
+      visitor_id: "visitor-enqueue-retry",
+      idempotency_key: "event-enqueue-retry"
+    }
+    allow(AggregateEventJob).to receive(:perform_later).and_raise("queue unavailable")
+
+    expect do
+      post "/api/v1/events", params: request_params
+    end.to raise_error(RuntimeError, "queue unavailable")
+
+    event = site.events.find_by!(idempotency_key: "event-enqueue-retry")
+    expect(event.aggregation_enqueued_at).to be_nil
+    allow(AggregateEventJob).to receive(:perform_later).and_call_original
+    clear_enqueued_jobs
+
+    expect do
+      post "/api/v1/events", params: request_params
+    end.to have_enqueued_job(AggregateEventJob).with(event.id).once
+    expect(response).to have_http_status(:accepted)
+  end
+
   it "attributes events by section uid and creates an assignment" do
     site = create(:site)
     page = create(:page, site:)
@@ -413,6 +439,10 @@ RSpec.describe "Event API" do
     experiment = create(:experiment, site:, section:)
     create(:variant, experiment:, key: "variant", name: "Variant")
     Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    expect_any_instance_of(Experiments::AssignmentService)
+      .to receive(:assign)
+      .with("visitor-section")
+      .and_call_original
 
     post "/api/v1/events", params: {
       site_token: signed_token_for(site),
@@ -424,6 +454,31 @@ RSpec.describe "Event API" do
     expect(response).to have_http_status(:accepted)
     expect(site.events.last.experiment).to eq(experiment)
     expect(experiment.assignments.find_by(visitor_id: "visitor-section")).to be_present
+  end
+
+  it "reuses a historical section assignment when the experiment closes during attribution" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    experiment = create(:experiment, site:, section:)
+    variant = create(:variant, experiment:, key: "variant", name: "Variant")
+    experiment.assignments.create!(visitor_id: "visitor-closing-section", variant:)
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    allow_any_instance_of(Experiments::AssignmentService).to receive(:assign).and_wrap_original do |_original, _visitor_id|
+      Experiment.where(id: experiment.id).update_all(status: "completed", ended_at: Time.current)
+      nil
+    end
+
+    post "/api/v1/events", params: {
+      site_token: signed_token_for(site),
+      event_type: "cta_click",
+      visitor_id: "visitor-closing-section",
+      section_uid: section.uid
+    }
+
+    expect(response).to have_http_status(:accepted)
+    expect(site.events.last).to have_attributes(experiment_id: experiment.id, variant_id: variant.id)
+    expect(experiment.assignments.where(visitor_id: "visitor-closing-section").count).to eq(1)
   end
 
   it "rolls back section assignment when non-idempotent event creation fails" do
@@ -479,6 +534,10 @@ RSpec.describe "Event API" do
     experiment = create(:experiment, site:, section:)
     variant = create(:variant, experiment:, key: "recommended", name: "Recommended")
     Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    expect_any_instance_of(Experiments::AssignmentService)
+      .to receive(:assign)
+      .with("visitor-explicit", variant:)
+      .and_call_original
 
     post "/api/v1/events", params: {
       site_token: signed_token_for(site),
@@ -492,6 +551,31 @@ RSpec.describe "Event API" do
     expect(site.events.last.experiment).to eq(experiment)
     expect(site.events.last.variant).to eq(variant)
     expect(experiment.assignments.find_by(visitor_id: "visitor-explicit")&.variant).to eq(variant)
+  end
+
+  it "rejects explicit attribution when the experiment closes after the active lookup" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    experiment = create(:experiment, site:, section:)
+    variant = create(:variant, experiment:, key: "recommended", name: "Recommended")
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    allow_any_instance_of(Events::IngestionService).to receive(:assignment_for!).and_wrap_original do |original, current_experiment, current_variant|
+      Experiment.where(id: experiment.id).update_all(status: "completed", ended_at: Time.current)
+      original.call(current_experiment, current_variant)
+    end
+
+    post "/api/v1/events", params: {
+      site_token: signed_token_for(site),
+      event_type: "cta_click",
+      visitor_id: "visitor-explicit-close-race",
+      experiment_id: experiment.id,
+      variant_key: variant.key
+    }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(experiment.assignments.count).to eq(0)
+    expect(site.events.count).to eq(0)
   end
 
   it "rejects explicit attribution when the experiment section is hidden" do
@@ -558,6 +642,30 @@ RSpec.describe "Event API" do
     }
 
     expect(response).to have_http_status(:unprocessable_content)
+  end
+
+  it "maps explicit assignment variant conflicts to a validation response" do
+    site = create(:site)
+    page = create(:page, site:)
+    section = create(:section, page:)
+    experiment = create(:experiment, site:, section:)
+    variant = create(:variant, experiment:, key: "recommended", name: "Recommended")
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
+    allow_any_instance_of(Experiments::AssignmentService)
+      .to receive(:assign)
+      .and_raise(Experiments::AssignmentService::VariantConflict)
+
+    post "/api/v1/events", params: {
+      site_token: signed_token_for(site),
+      event_type: "cta_click",
+      visitor_id: "visitor-cross-variant",
+      experiment_id: experiment.id,
+      variant_key: variant.key
+    }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(JSON.parse(response.body).fetch("error")).to match(/assignment conflicts with variant_key/i)
+    expect(site.events).to be_empty
   end
 
   it "rejects experiment attribution from another site" do

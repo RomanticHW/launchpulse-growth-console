@@ -1,4 +1,7 @@
 require_relative "boot"
+require_relative "database_url_config"
+
+DatabaseUrlConfig.validate_environment!
 
 require "rails"
 # Pick the frameworks you want:

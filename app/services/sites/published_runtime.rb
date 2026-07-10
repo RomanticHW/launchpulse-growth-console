@@ -17,7 +17,7 @@ module Sites
 
     def published_sections(page)
       snapshot = @site.published_snapshots.order(version: :desc).first
-      return page.sections.order(:position).to_a unless snapshot
+      return [] unless snapshot
 
       page_payload = snapshot.payload.fetch("pages", []).find { |payload| payload["path"] == page.path }
       return [] unless page_payload

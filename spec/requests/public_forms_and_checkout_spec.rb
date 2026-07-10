@@ -220,6 +220,8 @@ RSpec.describe "Public forms and checkout" do
     page = create(:page, site:)
     section = create(:section, page:, kind: "product_grid", props: { "products" => [ { "name" => "Calm Cream", "product_key" => "calm-cream" } ] })
     site.products.create!(name: "Calm Cream", key: "calm-cream", description: "Demo", price: 28)
+    experiment = create(:experiment, site:, section:, primary_goal: "order_created")
+    create(:variant, experiment:, key: "variant", name: "Variant")
     Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
 
     allow_any_instance_of(Public::CheckoutsController)
@@ -231,6 +233,7 @@ RSpec.describe "Public forms and checkout" do
     expect(response).to have_http_status(:unprocessable_content)
     expect(site.orders.count).to eq(0)
     expect(site.events.count).to eq(0)
+    expect(experiment.assignments.count).to eq(0)
   end
 
   it "rejects product checkout when section uid is not a product grid" do
@@ -305,6 +308,8 @@ RSpec.describe "Public forms and checkout" do
     site = create(:site, slug: "pricing-rollback-demo", status: "published")
     page = create(:page, site:)
     section = create(:section, page:, kind: "pricing", props: { "plans" => [ { "name" => "Cohort", "price" => "$399" } ] })
+    experiment = create(:experiment, site:, section:, primary_goal: "order_created")
+    create(:variant, experiment:, key: "variant", name: "Variant")
     Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
 
     allow_any_instance_of(Public::CheckoutsController)
@@ -316,6 +321,7 @@ RSpec.describe "Public forms and checkout" do
     expect(response).to have_http_status(:unprocessable_content)
     expect(site.orders.count).to eq(0)
     expect(site.events.count).to eq(0)
+    expect(experiment.assignments.count).to eq(0)
   end
 
   it "rejects pricing checkout when section uid is not pricing" do
@@ -406,6 +412,7 @@ RSpec.describe "Public forms and checkout" do
     form = site.forms.create!(section:, name: "Lead form")
     form.form_fields.create!(label: "Email address", key: "email", field_type: "email", required: true, position: 0)
     form.form_fields.create!(label: "Team size", key: "headcount", field_type: "text", required: true, position: 1)
+    Sites::SnapshotService.new(site).publish!(user: nil, note: "Spec publish")
 
     form.form_fields.find_by!(key: "headcount").update!(label: "Number of people")
     post "/s/stable-form-key-demo/forms/#{form.id}/submissions", params: {

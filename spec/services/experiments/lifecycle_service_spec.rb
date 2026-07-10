@@ -59,6 +59,34 @@ RSpec.describe Experiments::LifecycleService do
     end
   end
 
+  it "rejects launch when the caller holds a stale open recommendation" do
+    site, recommendation = recommendation_for(status: "open")
+    Recommendation.find(recommendation.id).update!(status: "dismissed", dismissed_at: Time.current)
+
+    expect do
+      described_class.new.launch_from_recommendation!(site:, recommendation:, user: nil, account: site.account)
+    end.to raise_error(Experiments::LifecycleService::InvalidTransition)
+
+    expect(site.experiments).to be_empty
+    expect(recommendation.reload.status).to eq("dismissed")
+  end
+
+  it "rejects launch when the recommendation section changes before the section lock" do
+    site, recommendation = recommendation_for(status: "open")
+    replacement_section = create(:section, page: recommendation.section.page, position: 1)
+
+    expect_any_instance_of(Section).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      Recommendation.where(id: recommendation.id).update_all(section_id: replacement_section.id)
+      original.call(*args, &block)
+    end
+
+    expect do
+      described_class.new.launch_from_recommendation!(site:, recommendation:, user: nil, account: site.account)
+    end.to raise_error(Experiments::LifecycleService::InvalidTransition, /关联的页面区块已变化/)
+
+    expect(site.experiments).to be_empty
+  end
+
   it "allows applied patch retest only before a winner has been applied" do
     site, recommendation = recommendation_for(status: "applied")
     service = described_class.new
@@ -88,13 +116,25 @@ RSpec.describe Experiments::LifecycleService do
     end.to raise_error(Experiments::LifecycleService::InvalidTransition, /这个区块已有尚未处理完的实验/)
   end
 
-  it "locks the section while checking and launching an experiment" do
+  it "locks the site before the section while checking and launching an experiment" do
     site = create(:site)
     page = create(:page, site:)
     section = create(:section, page:)
     recommendation = recommendation_for_section(site, section, title: "Locked CTA")
+    site_lock_held = false
 
-    expect(section).to receive(:with_lock).and_call_original
+    expect(site).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      original.call(*args) do
+        site_lock_held = true
+        block.call
+      ensure
+        site_lock_held = false
+      end
+    end
+    expect_any_instance_of(Section).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      expect(site_lock_held).to be(true)
+      original.call(*args, &block)
+    end
 
     experiment = described_class.new.launch_from_recommendation!(site:, recommendation:, user: nil, account: site.account)
 
@@ -156,14 +196,52 @@ RSpec.describe Experiments::LifecycleService do
     end.to raise_error(Experiments::LifecycleService::InvalidTransition)
   end
 
-  it "locks the experiment row while applying a winner" do
+  it "locks the site before the experiment row while completing" do
+    site, recommendation = recommendation_for(status: "open")
+    service = described_class.new
+    experiment = service.launch_from_recommendation!(site:, recommendation:, user: nil, account: site.account)
+    locked_site = experiment.site
+    site_lock_held = false
+
+    expect(locked_site).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      original.call(*args) do
+        site_lock_held = true
+        block.call
+      ensure
+        site_lock_held = false
+      end
+    end
+    expect(experiment).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      expect(site_lock_held).to be(true)
+      original.call(*args, &block)
+    end
+
+    service.complete!(experiment:, user: nil, account: site.account)
+
+    expect(experiment.reload.status).to eq("completed")
+  end
+
+  it "locks the site before the experiment row while applying a winner" do
     site, recommendation = recommendation_for(status: "open")
     service = described_class.new
     experiment = service.launch_from_recommendation!(site:, recommendation:, user: nil, account: site.account)
     variant = experiment.variants.find_by!(role: "variant")
     service.complete!(experiment:, user: nil, account: site.account)
+    locked_site = experiment.site
+    site_lock_held = false
 
-    expect(experiment).to receive(:with_lock).and_call_original
+    expect(locked_site).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      original.call(*args) do
+        site_lock_held = true
+        block.call
+      ensure
+        site_lock_held = false
+      end
+    end
+    expect(experiment).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      expect(site_lock_held).to be(true)
+      original.call(*args, &block)
+    end
 
     service.apply_winner!(experiment:, variant:, user: nil, account: site.account)
     expect(experiment.reload.winner_applied_at).to be_present

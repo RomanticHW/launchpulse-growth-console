@@ -4,4 +4,5 @@ class PublishedSnapshot < ApplicationRecord
 
   validates :version, numericality: { only_integer: true, greater_than: 0 }, uniqueness: { scope: :site_id }
   validates :payload, presence: true
+  validates :checksum, presence: true
 end

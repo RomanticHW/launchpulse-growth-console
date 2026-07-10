@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_09_093000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_09_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -118,6 +118,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_093000) do
 
   create_table "events", force: :cascade do |t|
     t.datetime "aggregated_at"
+    t.datetime "aggregation_enqueued_at"
     t.datetime "created_at", null: false
     t.string "device", default: "desktop", null: false
     t.string "event_type", null: false
@@ -137,6 +138,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_093000) do
     t.string "variant_key"
     t.string "visitor_id", null: false
     t.index ["aggregated_at"], name: "index_events_unaggregated", where: "(aggregated_at IS NULL)"
+    t.index ["created_at", "aggregation_enqueued_at", "id"], name: "idx_events_unaggregated_dispatch_recovery", where: "(aggregated_at IS NULL)"
     t.index ["experiment_id"], name: "index_events_on_experiment_id"
     t.index ["page_id"], name: "index_events_on_page_id"
     t.index ["site_id", "device", "occurred_at"], name: "index_events_on_site_id_and_device_and_occurred_at"
@@ -192,9 +194,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_093000) do
     t.datetime "created_at", null: false
     t.bigint "form_id", null: false
     t.jsonb "payload", default: {}, null: false
+    t.string "request_fingerprint"
+    t.string "request_token"
     t.datetime "updated_at", null: false
     t.index ["contact_id"], name: "index_form_submissions_on_contact_id"
+    t.index ["form_id", "request_token"], name: "idx_form_submissions_unique_request_token", unique: true, where: "(request_token IS NOT NULL)"
     t.index ["form_id"], name: "index_form_submissions_on_form_id"
+    t.check_constraint "request_token IS NULL AND request_fingerprint IS NULL OR request_token IS NOT NULL AND request_fingerprint IS NOT NULL", name: "form_submissions_request_identity_pair"
   end
 
   create_table "forms", force: :cascade do |t|
@@ -233,12 +239,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_093000) do
     t.datetime "created_at", null: false
     t.string "email", null: false
     t.string "number", null: false
+    t.string "request_fingerprint"
+    t.string "request_token"
     t.bigint "site_id", null: false
     t.string "source"
     t.decimal "total", precision: 10, scale: 2, default: "0.0", null: false
     t.datetime "updated_at", null: false
     t.index ["site_id", "number"], name: "index_orders_on_site_id_and_number", unique: true
+    t.index ["site_id", "request_token"], name: "idx_orders_unique_request_token", unique: true, where: "(request_token IS NOT NULL)"
     t.index ["site_id"], name: "index_orders_on_site_id"
+    t.check_constraint "request_token IS NULL AND request_fingerprint IS NULL OR request_token IS NOT NULL AND request_fingerprint IS NOT NULL", name: "orders_request_identity_pair"
   end
 
   create_table "pages", force: :cascade do |t|
@@ -267,7 +277,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_093000) do
   end
 
   create_table "published_snapshots", force: :cascade do |t|
-    t.string "checksum"
+    t.string "checksum", null: false
     t.datetime "created_at", null: false
     t.text "note"
     t.jsonb "payload", default: {}, null: false
@@ -279,6 +289,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_093000) do
     t.index ["published_by_id"], name: "index_published_snapshots_on_published_by_id"
     t.index ["site_id", "version"], name: "index_published_snapshots_on_site_id_and_version", unique: true
     t.index ["site_id"], name: "index_published_snapshots_on_site_id"
+    t.check_constraint "checksum::text !~ '^[[:space:]]*$'::text", name: "published_snapshots_checksum_not_blank"
   end
 
   create_table "recommendations", force: :cascade do |t|

@@ -8,28 +8,32 @@ module Public
       site = find_site
       event_type = params[:event_type].to_s
       unless Event::TYPES.include?(event_type)
-        render json: { error: "不支持该事件类型。" }, status: :unprocessable_content
+        render json: { error: "事件类型不正确" }, status: :unprocessable_content
         return
       end
       unless ALLOWED_DIRECT_EVENT_TYPES.include?(event_type)
-        render json: { error: "该事件不能从公开页面直接上报。" }, status: :unprocessable_content
+        render json: { error: "该事件不能从公开页面直接上报" }, status: :unprocessable_content
         return
       end
       section_uid = params[:section_uid].presence
       form_id = params[:form_id].presence
       product_key = params[:product_key].presence
-      # 带区块标识的事件必须来自最新发布版本，草稿区块不能产生实验数据。
-      assignment = assignment_for_section_uid(site, section_uid, require_visible: section_uid.present?)
-      event = record_public_event!(
-        site:,
-        page: site.home_page,
-        event_type:,
-        metadata: metadata_params,
-        assignment:,
-        section_uid:,
-        form_id:,
-        product_key:
-      )
+      # 带区块标识的交互事件必须确认区块仍在正式页面中，否则外部请求能给草稿实验刷出访客。
+      event = ActiveRecord::Base.transaction do
+        assignment = assignment_for_section_uid(site, section_uid, require_visible: section_uid.present?)
+        record_public_event!(
+          site:,
+          page: site.home_page,
+          event_type:,
+          metadata: metadata_params,
+          assignment:,
+          section_uid:,
+          form_id:,
+          product_key:,
+          enqueue: false
+        )
+      end
+      enqueue_public_event!(event)
       render json: { id: event.id, status: "accepted" }, status: :accepted
     rescue ActiveRecord::RecordInvalid => error
       render json: { error: "事件内容不符合要求。" }, status: :unprocessable_content

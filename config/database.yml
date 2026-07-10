@@ -110,21 +110,33 @@ test:
 # Read https://guides.rubyonrails.org/configuring.html#configuring-a-database
 # for a full overview on how database connection configuration can be specified.
 #
+<%
+  require_relative "database_url_config"
+
+  primary_database_uri = DatabaseUrlConfig.parse(ENV["DATABASE_URL"])
+  cache_database_uri = DatabaseUrlConfig.parse(ENV["CACHE_DATABASE_URL"]) || DatabaseUrlConfig.derive(primary_database_uri, "cache")
+  queue_database_uri = DatabaseUrlConfig.parse(ENV["QUEUE_DATABASE_URL"]) || DatabaseUrlConfig.derive(primary_database_uri, "queue")
+  cable_database_uri = DatabaseUrlConfig.parse(ENV["CABLE_DATABASE_URL"]) || DatabaseUrlConfig.derive(primary_database_uri, "cable")
+%>
 production:
   primary: &primary_production
     <<: *default
+    url: <%= primary_database_uri&.to_s.to_json %>
     database: launch_pulse_production
     username: launch_pulse
     password: <%= ENV["LAUNCH_PULSE_DATABASE_PASSWORD"] %>
   cache:
     <<: *primary_production
+    url: <%= cache_database_uri&.to_s.to_json %>
     database: launch_pulse_production_cache
     migrations_paths: db/cache_migrate
   queue:
     <<: *primary_production
+    url: <%= queue_database_uri&.to_s.to_json %>
     database: launch_pulse_production_queue
     migrations_paths: db/queue_migrate
   cable:
     <<: *primary_production
+    url: <%= cable_database_uri&.to_s.to_json %>
     database: launch_pulse_production_cable
     migrations_paths: db/cable_migrate

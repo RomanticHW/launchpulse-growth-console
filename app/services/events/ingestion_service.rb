@@ -18,17 +18,20 @@ module Events
       validate_payload!
       fingerprint = payload_fingerprint
       key = idempotency_key
-      event, created = resolve_event(site, idempotency_key: key, payload_fingerprint: fingerprint)
+      event, = resolve_event(site, idempotency_key: key, payload_fingerprint: fingerprint)
 
       api_key.update!(last_used_at: Time.current)
-      AggregateEventJob.perform_later(event.id) if created && !event.aggregated_at?
+      Events::AggregationDispatcher.call(event) unless event.aggregated_at?
       event
     end
 
     private
 
     def authenticate!
-      payload = Rails.application.message_verifier(:site_tracking).verify(@params.fetch(:site_token))
+      token = @params.fetch(:site_token)
+      raise InvalidToken, "invalid site token" unless token.is_a?(String)
+
+      payload = Rails.application.message_verifier(:site_tracking).verify(token)
       payload = payload.with_indifferent_access
       api_key = ApiKey.active.find_by(site_id: payload.fetch(:site_id), token_digest: ApiKey.digest(payload.fetch(:token)))
       raise InvalidToken, "invalid site token" unless api_key
@@ -172,7 +175,7 @@ module Events
       experiment = site.experiments.accepting_new_assignments.joins(:section).find_by(sections: { uid: section_uid })
       if experiment
         assignment = Experiments::AssignmentService.new(experiment).assign(@params[:visitor_id])
-        return { experiment:, variant: assignment.variant, variant_key: assignment.variant.key, assignment: }
+        return { experiment:, variant: assignment.variant, variant_key: assignment.variant.key, assignment: } if assignment
       end
 
       # Paused/completed: reuse historical assignment only; never mint a new one.
@@ -186,19 +189,12 @@ module Events
     end
 
     def assignment_for!(experiment, variant)
-      assignment = experiment.assignments.find_by(visitor_id: @params[:visitor_id])
-      if assignment
-        raise InvalidPayload, "assignment conflicts with variant_key" if assignment.variant_id != variant.id
-
-        return assignment
-      end
-
-      experiment.assignments.create!(visitor_id: @params[:visitor_id], variant:)
-    rescue ActiveRecord::RecordNotUnique
-      assignment = experiment.assignments.find_by!(visitor_id: @params[:visitor_id])
-      raise InvalidPayload, "assignment conflicts with variant_key" if assignment.variant_id != variant.id
+      assignment = Experiments::AssignmentService.new(experiment).assign(@params[:visitor_id], variant:)
+      raise InvalidPayload, "experiment is invalid" unless assignment
 
       assignment
+    rescue Experiments::AssignmentService::VariantConflict
+      raise InvalidPayload, "assignment conflicts with variant_key"
     end
 
     def page_for(site)

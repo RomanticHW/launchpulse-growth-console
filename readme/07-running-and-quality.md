@@ -61,9 +61,17 @@ bin/rails db:prepare
 |------|------|
 | `RAILS_ENV=production` | 启用生产模式 |
 | `SECRET_KEY_BASE` | 会话、签名 Cookie 和站点令牌 |
-| `DATABASE_URL` | PostgreSQL 主库连接 |
+| `DATABASE_URL` | PostgreSQL 主连接；未提供专用 URL 时自动派生 `<primary>_cache`、`<primary>_queue`、`<primary>_cable` |
+| `CACHE_DATABASE_URL` | 可选，覆盖缓存库连接 |
+| `QUEUE_DATABASE_URL` | 可选，覆盖队列库连接 |
+| `CABLE_DATABASE_URL` | 可选，覆盖实时通道库连接 |
+| `LAUNCH_PULSE_DATABASE_PASSWORD` | 可选，用于未配置 URL 的传统命名数据库部署 |
 | `APP_HOST` | Host 授权白名单 |
 | `RAILS_LOG_LEVEL` | 日志级别，默认 `info` |
+
+只设置 `DATABASE_URL` 时，派生库会继承相同的主机、端口、用户和连接参数，仅数据库名增加对应后缀。四个连接必须对应四个物理数据库，不能共用同一套 `schema_migrations`。
+
+部署阶段运行 `bin/rails db:prepare`。数据库角色需要 `CREATEDB` 权限；托管 PostgreSQL 不授予该权限时，应预先创建主库和三个派生库。使用专用 URL 覆盖时，也要确保对应数据库已存在。
 
 生产环境已启用 SSL 假设与强制跳转；健康检查 `/up` 不执行 HTTPS 跳转和 Host 校验。访客与会话 Cookie 在生产环境使用 `secure` 属性。
 
@@ -74,7 +82,7 @@ bin/rails db:prepare
 | 进程 | 职责 |
 |------|------|
 | Puma | 后台、公开站点和 API |
-| Solid Queue Worker | 事件聚合、访客模拟和延迟看板刷新 |
+| Solid Queue Worker | 事件聚合、未聚合事件周期恢复、访客模拟和延迟看板刷新 |
 | Solid Cable | 跨进程实时更新 |
 
 小流量环境可以配置 Solid Queue 与 Puma 同进程运行；常规部署建议保留独立工作进程。

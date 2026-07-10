@@ -39,6 +39,47 @@ RSpec.describe "Sites" do
     expect(response).to have_http_status(:accepted)
   end
 
+  it "keeps the old demo token active when issuing the replacement fails" do
+    account = create(:account)
+    user = create(:user, password: "password")
+    create(:membership, account:, user:)
+    site = create(:site, account:)
+    old_key, = ApiKey.issue!(site:, name: "Demo tracking token")
+    create(:page, site:)
+    allow(ApiKey).to receive(:issue!).and_raise(ActiveRecord::RecordInvalid.new(ApiKey.new))
+
+    sign_in(user)
+
+    post site_rotate_tracking_token_path(site)
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(old_key.reload).to be_active
+    expect(site.api_keys.active.where(name: "Demo tracking token")).to contain_exactly(old_key)
+  end
+
+  it "rolls back the new key and keeps the old demo token active when signing fails" do
+    account = create(:account)
+    user = create(:user, password: "password")
+    create(:membership, account:, user:)
+    site = create(:site, account:)
+    old_key, = ApiKey.issue!(site:, name: "Demo tracking token")
+    create(:page, site:)
+    allow(ApiKey).to receive(:issue!).and_wrap_original do |original, **arguments|
+      key, raw_token = original.call(**arguments)
+      allow(key).to receive(:signed_token).and_raise(ActiveSupport::MessageVerifier::InvalidSignature)
+      [ key, raw_token ]
+    end
+
+    sign_in(user)
+
+    expect do
+      post site_rotate_tracking_token_path(site)
+    end.to raise_error(ActiveSupport::MessageVerifier::InvalidSignature)
+    expect(old_key.reload).to be_active
+    expect(site.api_keys.active.where(name: "Demo tracking token")).to contain_exactly(old_key)
+    expect(site.api_keys.where(name: "Demo tracking token").count).to eq(1)
+  end
+
   it "renders the same themed illustrations inside the live preview frame" do
     account = create(:account)
     user = create(:user, password: "password")
@@ -59,6 +100,11 @@ RSpec.describe "Sites" do
     expect(response.body).to include('data-illustration="coffee-hero"')
     expect(response.body).to include('data-illustration="coffee-feature-0"')
     expect(response.body).to include('data-illustration="coffee-feature-1"')
+
+    preview_cta = Nokogiri::HTML(response.body).at_css('[data-preview-target="frame"] a[href="#contact"]')
+    expect(preview_cta).to be_present
+    expect(preview_cta["data-controller"]).to be_nil
+    expect(preview_cta["data-public-tracking-event-type-value"]).to be_nil
   end
 
   it "renders a submit-in-progress label for the visitor simulation action" do
